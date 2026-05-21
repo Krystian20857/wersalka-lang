@@ -12,50 +12,84 @@ namespace runtime {
 
 std::string_view GetBinaryOpMnemonic(ASTBinaryExpr::Operator op) {
   switch (op) {
-    case ASTBinaryExpr::Operator::kAdd:        return "+";
-    case ASTBinaryExpr::Operator::kSub:        return "-";
-    case ASTBinaryExpr::Operator::kMul:        return "*";
-    case ASTBinaryExpr::Operator::kDiv:        return "/";
-    case ASTBinaryExpr::Operator::kMod:        return "%";
-    case ASTBinaryExpr::Operator::kExp:        return "**";
-    case ASTBinaryExpr::Operator::kBitwiseAnd: return "&";
-    case ASTBinaryExpr::Operator::kBitwiseOr:  return "|";
-    case ASTBinaryExpr::Operator::kBitwiseXor: return "^";
-    case ASTBinaryExpr::Operator::kBitwiseShl: return "<<";
-    case ASTBinaryExpr::Operator::kBitwiseShr: return ">>";
-    case ASTBinaryExpr::Operator::kLogicAnd:   return "&&";
-    case ASTBinaryExpr::Operator::kLogicOr:    return "||";
-    case ASTBinaryExpr::Operator::kCmpEq:      return "==";
-    case ASTBinaryExpr::Operator::kCmpNe:      return "!=";
-    case ASTBinaryExpr::Operator::kCmpLt:      return "<";
-    case ASTBinaryExpr::Operator::kCmpGt:      return ">";
-    case ASTBinaryExpr::Operator::kCmpLe:      return "<=";
-    case ASTBinaryExpr::Operator::kCmpGe:      return ">=";
+    case ASTBinaryExpr::Operator::kAdd:
+      return "+";
+    case ASTBinaryExpr::Operator::kSub:
+      return "-";
+    case ASTBinaryExpr::Operator::kMul:
+      return "*";
+    case ASTBinaryExpr::Operator::kDiv:
+      return "/";
+    case ASTBinaryExpr::Operator::kMod:
+      return "%";
+    case ASTBinaryExpr::Operator::kExp:
+      return "**";
+    case ASTBinaryExpr::Operator::kBitwiseAnd:
+      return "&";
+    case ASTBinaryExpr::Operator::kBitwiseOr:
+      return "|";
+    case ASTBinaryExpr::Operator::kBitwiseXor:
+      return "^";
+    case ASTBinaryExpr::Operator::kBitwiseShl:
+      return "<<";
+    case ASTBinaryExpr::Operator::kBitwiseShr:
+      return ">>";
+    case ASTBinaryExpr::Operator::kLogicAnd:
+      return "&&";
+    case ASTBinaryExpr::Operator::kLogicOr:
+      return "||";
+    case ASTBinaryExpr::Operator::kCmpEq:
+      return "==";
+    case ASTBinaryExpr::Operator::kCmpNe:
+      return "!=";
+    case ASTBinaryExpr::Operator::kCmpLt:
+      return "<";
+    case ASTBinaryExpr::Operator::kCmpGt:
+      return ">";
+    case ASTBinaryExpr::Operator::kCmpLe:
+      return "<=";
+    case ASTBinaryExpr::Operator::kCmpGe:
+      return ">=";
   }
 }
 
 std::string_view GetAssignOpMnemonic(ASTAssignExpr::Operator op) {
   switch (op) {
-    case ASTAssignExpr::Operator::kAssign:    return "=";
-    case ASTAssignExpr::Operator::kAddAssign: return "+=";
-    case ASTAssignExpr::Operator::kSubAssign: return "-=";
-    case ASTAssignExpr::Operator::kMulAssign: return "*=";
-    case ASTAssignExpr::Operator::kDivAssign: return "/=";
-    case ASTAssignExpr::Operator::kModAssign: return "%=";
-    case ASTAssignExpr::Operator::kAndAssign: return "&=";
-    case ASTAssignExpr::Operator::kOrAssign:  return "|=";
-    case ASTAssignExpr::Operator::kXorAssign: return "^=";
-    case ASTAssignExpr::Operator::kShlAssign: return "<<=";
-    case ASTAssignExpr::Operator::kShrAssign: return ">>=";
+    case ASTAssignExpr::Operator::kAssign:
+      return "=";
+    case ASTAssignExpr::Operator::kAddAssign:
+      return "+=";
+    case ASTAssignExpr::Operator::kSubAssign:
+      return "-=";
+    case ASTAssignExpr::Operator::kMulAssign:
+      return "*=";
+    case ASTAssignExpr::Operator::kDivAssign:
+      return "/=";
+    case ASTAssignExpr::Operator::kModAssign:
+      return "%=";
+    case ASTAssignExpr::Operator::kAndAssign:
+      return "&=";
+    case ASTAssignExpr::Operator::kOrAssign:
+      return "|=";
+    case ASTAssignExpr::Operator::kXorAssign:
+      return "^=";
+    case ASTAssignExpr::Operator::kShlAssign:
+      return "<<=";
+    case ASTAssignExpr::Operator::kShrAssign:
+      return ">>=";
   }
 }
 
 std::string_view GetUnaryOpMnemonic(ASTUnaryExpr::Operator op) {
   switch (op) {
-    case ASTUnaryExpr::Operator::kPlus:     return "+";
-    case ASTUnaryExpr::Operator::kNeg:     return "-";
-    case ASTUnaryExpr::Operator::kLogicNeg: return "!";
-    case ASTUnaryExpr::Operator::kBitwiseNeg:    return "~";
+    case ASTUnaryExpr::Operator::kPlus:
+      return "+";
+    case ASTUnaryExpr::Operator::kNeg:
+      return "-";
+    case ASTUnaryExpr::Operator::kLogicNeg:
+      return "!";
+    case ASTUnaryExpr::Operator::kBitwiseNeg:
+      return "~";
   }
 }
 
@@ -131,13 +165,16 @@ static void DumpNode(const ASTNode* node, std::string& out, int depth) {
       const auto* n = static_cast<const ASTConstExpr*>(node);
       switch (n->value->value_kind) {
         case ValueKind::kSignedInt:
-          absl::StrAppendFormat(&out, "%sConstExpr [%d]\n", indent, n->value->int_v);
+          absl::StrAppendFormat(&out, "%sConstExpr [%d]\n", indent,
+                                n->value->int_v);
           break;
         case ValueKind::kUnsignedInt:
-          absl::StrAppendFormat(&out, "%sConstExpr [%u]\n", indent, n->value->uint_v);
+          absl::StrAppendFormat(&out, "%sConstExpr [%u]\n", indent,
+                                n->value->uint_v);
           break;
         case ValueKind::kFloat:
-          absl::StrAppendFormat(&out, "%sConstExpr [%g]\n", indent, n->value->float_v);
+          absl::StrAppendFormat(&out, "%sConstExpr [%g]\n", indent,
+                                n->value->float_v);
           break;
         case ValueKind::kBool:
           absl::StrAppendFormat(&out, "%sConstExpr [%s]\n", indent,

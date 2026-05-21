@@ -6,10 +6,9 @@
 
 #include <iostream>
 
+#include "absl/strings/str_format.h"
 #include "runtime/sym.h"
 #include "runtime/zone.h"
-
-#include "absl/strings/str_format.h"
 
 namespace wersalka {
 namespace lang {
@@ -166,23 +165,7 @@ void CodeGenerator::CompileExpr(Zone& zone, BytecodeBuilder& builder,
     }
     case ASTNode::Kind::kAssignExpr: {
       const auto assign_expr = Cast<ASTAssignExpr>(expr);
-      const auto target_expr = assign_expr->target;
-      if (target_expr->kind() == ASTNode::Kind::kIdentExpr) {
-        const auto ident_expr = Cast<ASTIdentExpr>(target_expr);
-        const auto slot = locals.LookupVar(ident_expr->ident);
-        if (slot) {
-          builder.EmitVarLocal(Opcode::kStoreLocal, *slot);
-        } else {
-          builder.EmitVarGlobal(Opcode::kStoreGlobal, ident_expr->ident);
-        }
-      } else {
-        // TODO: redirect to intrinsic when possible,
-        //  I don't want to invent lvalue/rvalue semantics here
-        reporter_->Report(Diagnostic::Error("Assignment is only possible on "
-                                            "local variables or global symbols")
-                              .withLabel(target_expr->span(),
-                                         "non-assignable left expression"));
-      }
+      CompileAssignExpr(zone, builder, locals, assign_expr);
       break;
     }
     default:
@@ -291,6 +274,91 @@ void CodeGenerator::CompileUnaryExpr(Zone& zone, BytecodeBuilder& builder,
       builder.Emit(Opcode::kXor);
       break;
     }
+  }
+}
+void CodeGenerator::CompileAssignExpr(Zone& zone, BytecodeBuilder& builder,
+                                      LocalsTable& locals,
+                                      ZonePtr<ASTAssignExpr> expr) {
+  if (expr->op == ASTAssignExpr::Operator::kAssign) {
+    CompileExpr(zone, builder, locals, expr->value);
+    CompileLValue(zone, builder, locals, expr->target);
+    return;
+  }
+
+  Opcode op;
+  switch (expr->op) {
+    case ASTAssignExpr::Operator::kAddAssign:
+      op = Opcode::kAdd;
+      break;
+    case ASTAssignExpr::Operator::kSubAssign:
+      op = Opcode::kSub;
+      break;
+    case ASTAssignExpr::Operator::kMulAssign:
+      op = Opcode::kMul;
+      break;
+    case ASTAssignExpr::Operator::kDivAssign:
+      op = Opcode::kDiv;
+      break;
+    case ASTAssignExpr::Operator::kModAssign:
+      op = Opcode::kMod;
+      break;
+    case ASTAssignExpr::Operator::kAndAssign:
+      op = Opcode::kAnd;
+      break;
+    case ASTAssignExpr::Operator::kOrAssign:
+      op = Opcode::kOr;
+      break;
+    case ASTAssignExpr::Operator::kXorAssign:
+      op = Opcode::kOr;
+      break;
+    case ASTAssignExpr::Operator::kShlAssign:
+      op = Opcode::kShl;
+      break;
+    case ASTAssignExpr::Operator::kShrAssign:
+      op = Opcode::kShr;
+      break;
+    default:
+      ABSL_UNREACHABLE();
+  }
+
+  CompileRValue(zone, builder, locals, expr->target);
+  CompileExpr(zone, builder, locals, expr->value);
+  builder.Emit(op);
+  CompileLValue(zone, builder, locals, expr->target);
+}
+void CodeGenerator::CompileLValue(Zone& zone, BytecodeBuilder& builder,
+                                  LocalsTable& locals,
+                                  ZonePtr<ASTExpr> target) {
+  if (target->kind() == ASTNode::Kind::kIdentExpr) {
+    const auto ident_expr = Cast<ASTIdentExpr>(target);
+    const auto slot = locals.LookupVar(ident_expr->ident);
+    if (slot) {
+      builder.EmitVarLocal(Opcode::kStoreLocal, *slot);
+    } else {
+      builder.EmitVarGlobal(Opcode::kStoreGlobal, ident_expr->ident);
+    }
+  } else {
+    reporter_->Report(
+        Diagnostic::Error("LValue can be only "
+                          "local variables or global symbols")
+            .withLabel(target->span(), "non-assignable left expression"));
+  }
+}
+void CodeGenerator::CompileRValue(Zone& zone, BytecodeBuilder& builder,
+                                  LocalsTable& locals, ZonePtr<ASTExpr> value) {
+  if (value->kind() == ASTNode::Kind::kIdentExpr) {
+    const auto ident_expr = Cast<ASTIdentExpr>(value);
+    const auto slot = locals.LookupVar(ident_expr->ident);
+    if (slot) {
+      builder.EmitVarLocal(Opcode::kLoadLocal, *slot);
+    } else {
+      builder.EmitVarGlobal(Opcode::kLoadGlobal, ident_expr->ident);
+    }
+  } else {
+    reporter_->Report(
+        Diagnostic::Error("RValue can be only "
+                          "local variables or global symbols")
+            .withLabel(value->span(), "non-assignable left expression"));
   }
 }
 ConstantDesc CodeGenerator::CompileConstant(BytecodeBuilder& builder,

@@ -30,6 +30,8 @@ func main() {
 }
 
 func test(p) {
+  var a = 0;
+  a /= 10;
 }
 )";
   Zone zone;
