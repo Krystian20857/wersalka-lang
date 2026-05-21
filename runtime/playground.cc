@@ -4,7 +4,9 @@
 
 #include <iostream>
 
+#include "codegen.h"
 #include "runtime/diagnostic.h"
+#include "runtime/parser.h"
 #include "runtime/tokenizer.h"
 
 namespace wersalka {
@@ -12,23 +14,42 @@ namespace lang {
 namespace runtime {
 
 int Main() {
-  Zone zone;
-  DiagnosticReporter reporter;
-  Tokenizer tokenizer(&zone, &reporter, R"( -1000 )");
-  std::vector<Token> tokens;
-  while (true) {
-    const auto& current = tokenizer.current();
-    if (current.kind == TokenKind::kEnd) {
-      break;
-    }
-    if (current.kind != TokenKind::kBegin) {
-      tokens.push_back(current);
-    }
-    tokenizer.Next();
+  const auto source = R"(
+func main() {
+  var a = 1 + (2 * 3);
+
+  if (a > 5) {
+    print(1);
+  } else {
+    print(2);
   }
 
-  for (auto token : tokens) {
-    std::cout << GetTokenMnemonic(token.kind) << "\n";
+  test(1000);
+
+  return 1337;
+}
+
+func test(p) {
+}
+)";
+  Zone zone;
+  DiagnosticReporter reporter;
+  Tokenizer tokenizer(&zone, &reporter, source);
+  Parser parser(&zone, &tokenizer, &reporter);
+
+  const auto ast = parser.Parse();
+
+  std::cout << DumpAST(ast);
+
+  Runtime runtime(&zone);
+  CodeGenerator codegen(&runtime, &reporter);
+
+  if (Is<ASTCompileUnit>(ast)) {
+    const auto compile_unit = Cast<ASTCompileUnit>(ast);
+    for (const auto function : compile_unit->functions) {
+      const auto object = codegen.CreateCodeObject(function);
+      std::cout << object->instructions.size() << "\n";
+    }
   }
 
   return 0;

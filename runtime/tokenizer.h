@@ -5,6 +5,8 @@
 #ifndef WERSALKALANG_TOKENIZER_H
 #define WERSALKALANG_TOKENIZER_H
 
+#include <stack>
+
 #include "absl/strings/charset.h"
 #include "runtime/diagnostic.h"
 #include "runtime/source.h"
@@ -20,17 +22,23 @@ enum class TokenKind {
   kError, kBegin, kEnd,
 
   // literals
-  kIdent, kIntLit, kFloatLit, kBoolLit,
+  kIdent, kIntLit, kFloatLit, kBoolLit, kNullLit,
 
   // symbols
-  kOpenParen, kCloseParen,
-  kOpenBracket, kCloseBracket,
-  kOpenBrace, kCloseBrace,
-  kOpenChev, kCloseChev,
+  kOpenParen, kCloseParen,     // ()
+  kOpenBracket, kCloseBracket, // []
+  kOpenBrace, kCloseBrace,     // {}
+  kOpenChev, kCloseChev,       // <>
 
   kEq, kBang,
   kEqEq, kBangEq, kGtEq, kLtEq,
   kPlus, kMinus, kStar, kSlash, kPercent,
+  kAmp, kPipe, kCaret, kTilde,
+  kAmpAmp, kPipePipe,
+  kLtLt, kGtGt,
+  kStarStar,
+  kPlusEq, kMinusEq, kStarEq, kSlashEq, kPercentEq,
+  kAmpEq, kPipeEq, kCaretEq, kLtLtEq, kGtGtEq,
 
   kSingleQuote, kDoubleQuote,
   kSemi, kComma, kDot,
@@ -40,7 +48,7 @@ enum class TokenKind {
   kTemplateSegment, kTemplateExprBegin, kTemplateExprEnd,
 
   // keywords
-  kVar, kIf, kElse, kIn, kFor, kFunc,
+  kVar, kIf, kWhile, kElse, kIn, kFor, kFunc, kReturn,
 
   kReserved
 };
@@ -52,7 +60,7 @@ inline std::ostream& operator<<(std::ostream& os, TokenKind kind) {
 }
 
 enum class ValueKind {
-  kNone, kUnsignedInt, kSignedInt,
+  kNone, kNull, kUnsignedInt, kSignedInt,
   kFloat, kBool, kStrSegment, kIdent
 };
 // clang-format on

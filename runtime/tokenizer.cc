@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <string>
-#include <string>
 
 #include "absl/container/flat_hash_map.h"
 
@@ -34,14 +33,10 @@ constexpr absl::CharSet kWhitespace =
 const absl::flat_hash_map<char, char> kEscapes = {{'n', '\n'},  {'t', '\t'},
                                                   {'\\', '\\'}, {'\'', '\''},
                                                   {'"', '"'},   {'{', '{'}};
-
-// clang-format off
 const absl::flat_hash_map<absl::string_view, TokenKind> kKeywords = {
-    {"var", kVar},   {"if", kIf},
-    {"else", kElse}, {"in", kIn},
-    {"for", kFor},   {"func", kFunc},
+    {"var", kVar}, {"if", kIf},   {"while", kWhile}, {"else", kElse},
+    {"in", kIn},   {"for", kFor}, {"func", kFunc},   {"return", kReturn},
 };
-// clang-format on
 
 constexpr auto kTripleQuote = R"(""")";
 
@@ -76,6 +71,25 @@ const absl::flat_hash_map<TokenKind, absl::string_view> kTokenMnemonics = {
   {kStar, "*"},
   {kSlash, "/"},
   {kPercent, "%"},
+  {kAmp, "&"},
+  {kPipe, "|"},
+  {kAmpAmp, "&&"},
+  {kPipePipe, "||"},
+  {kCaret, "^"},
+  {kTilde, "~"},
+  {kLtLt, "<<"},
+  {kGtGt, ">>"},
+  {kStarStar, "**"},
+  {kPlusEq, "+="},
+  {kMinusEq, "-="},
+  {kStarEq, "*="},
+  {kSlashEq, "/="},
+  {kPercentEq, "%="},
+  {kAmpEq, "&="},
+  {kPipeEq, "|="},
+  {kCaretEq, "^="},
+  {kLtLtEq, "<<="},
+  {kGtGtEq, ">>="},
 
   {kSingleQuote, "'"},
   {kDoubleQuote, "\""},
@@ -93,10 +107,12 @@ const absl::flat_hash_map<TokenKind, absl::string_view> kTokenMnemonics = {
   // keywords
   {kVar, "var"},
   {kIf, "if"},
+  {kWhile, "while"},
   {kElse, "else"},
   {kIn, "in"},
   {kFor, "for"},
   {kFunc, "func"},
+  {kReturn, "return"},
 
   {kReserved, "<RESERVED>"}
 };
@@ -247,6 +263,11 @@ bool Tokenizer::TryConsumeIdent() {
     current_.bool_v = false;
     return true;
   }
+  if (text == "null") {
+    current_.kind = kNullLit;
+    current_.value_kind = ValueKind::kNull;
+    return true;
+  }
   if (kKeywords.contains(text)) {
     current_.kind = kKeywords.at(text);
   } else {
@@ -260,9 +281,11 @@ bool Tokenizer::TryConsumeInt() {
   bool neg = false;
   if (!At(kDigits)) {
     if (AtChar('-')) {
+      const int saved_pos = pos_;
       neg = true;
       NextChar();
       if (!At(kDigits)) {
+        pos_ = saved_pos;
         return false;
       }
     } else {
@@ -410,6 +433,16 @@ bool Tokenizer::TryConsumeSymbol() {
       return true;
     case '<':
       NextChar();
+      if (AtChar('<')) {
+        NextChar();
+        if (AtChar('=')) {
+          NextChar();
+          current_.kind = TokenKind::kLtLtEq;
+          return true;
+        }
+        current_.kind = TokenKind::kLtLt;
+        return true;
+      }
       if (AtChar('=')) {
         NextChar();
         current_.kind = TokenKind::kLtEq;
@@ -419,12 +452,63 @@ bool Tokenizer::TryConsumeSymbol() {
       return true;
     case '>':
       NextChar();
+      if (AtChar('>')) {
+        NextChar();
+        if (AtChar('=')) {
+          NextChar();
+          current_.kind = TokenKind::kGtGtEq;
+          return true;
+        }
+        current_.kind = TokenKind::kGtGt;
+        return true;
+      }
       if (AtChar('=')) {
         NextChar();
         current_.kind = TokenKind::kGtEq;
         return true;
       }
       current_.kind = TokenKind::kCloseChev;
+      return true;
+    case '&':
+      NextChar();
+      if (AtChar('&')) {
+        NextChar();
+        current_.kind = TokenKind::kAmpAmp;
+        return true;
+      }
+      if (AtChar('=')) {
+        NextChar();
+        current_.kind = TokenKind::kAmpEq;
+        return true;
+      }
+      current_.kind = TokenKind::kAmp;
+      return true;
+    case '|':
+      NextChar();
+      if (AtChar('|')) {
+        NextChar();
+        current_.kind = TokenKind::kPipePipe;
+        return true;
+      }
+      if (AtChar('=')) {
+        NextChar();
+        current_.kind = TokenKind::kPipeEq;
+        return true;
+      }
+      current_.kind = TokenKind::kPipe;
+      return true;
+    case '^':
+      NextChar();
+      if (AtChar('=')) {
+        NextChar();
+        current_.kind = TokenKind::kCaretEq;
+        return true;
+      }
+      current_.kind = TokenKind::kCaret;
+      return true;
+    case '~':
+      NextChar();
+      current_.kind = TokenKind::kTilde;
       return true;
     case ';':
       NextChar();
@@ -457,22 +541,52 @@ bool Tokenizer::TryConsumeSymbol() {
       return true;
     case '-':
       NextChar();
+      if (AtChar('=')) {
+        NextChar();
+        current_.kind = TokenKind::kMinusEq;
+        return true;
+      }
       current_.kind = TokenKind::kMinus;
       return true;
     case '+':
       NextChar();
+      if (AtChar('=')) {
+        NextChar();
+        current_.kind = TokenKind::kPlusEq;
+        return true;
+      }
       current_.kind = TokenKind::kPlus;
       return true;
     case '*':
       NextChar();
+      if (AtChar('*')) {
+        NextChar();
+        current_.kind = TokenKind::kStarStar;
+        return true;
+      }
+      if (AtChar('=')) {
+        NextChar();
+        current_.kind = TokenKind::kStarEq;
+        return true;
+      }
       current_.kind = TokenKind::kStar;
       return true;
     case '/':
       NextChar();
+      if (AtChar('=')) {
+        NextChar();
+        current_.kind = TokenKind::kSlashEq;
+        return true;
+      }
       current_.kind = TokenKind::kSlash;
       return true;
     case '%':
       NextChar();
+      if (AtChar('=')) {
+        NextChar();
+        current_.kind = TokenKind::kPercentEq;
+        return true;
+      }
       current_.kind = TokenKind::kPercent;
       return true;
     case '=':

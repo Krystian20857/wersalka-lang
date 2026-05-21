@@ -37,3 +37,16 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "parser_test",
+    size = "small",
+    srcs = [
+        "parser_test.cc",
+    ],
+    deps = [
+        "//runtime",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)

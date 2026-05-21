@@ -4,6 +4,7 @@
 
 #ifndef WERSALKALANG_PARSER_H
 #define WERSALKALANG_PARSER_H
+
 #include "runtime/ast.h"
 #include "runtime/tokenizer.h"
 #include "runtime/zone.h"
@@ -24,6 +25,8 @@ class TokenSet final {
 
   constexpr bool Contains(TokenKind kind) const;
 
+  std::string Format() const;
+
  private:
   using TokenBitSet =
       std::bitset<static_cast<std::size_t>(TokenKind::kReserved)>;
@@ -43,14 +46,46 @@ class Parser final {
         tokens_(zone, kTokenBufferSize),
         pos_(0) {}
 
-  ZonePtr<ASTNode> Parse();
+  ZonePtr<ASTNode> Parse(bool expr = false);
 
  private:
-  static constexpr auto kTokenBufferSize = 128;
+  enum class Precedence {
+    kNone,
+    kAssignment,  // right-assoc
+    kLogicOr,
+    kLogicAnd,
+    kBitwiseOr,
+    kBitwiseXor,
+    kBitwiseAnd,
+    kEquality,
+    kComparison,
+    kShift,
+    kAdditive,
+    kMultiplicative,
+    kExponent,  // right-assoc
+    kPostfix,
+  };
 
-  ZonePtr<ASTExpr> ParseExpr();
+  static constexpr auto kTokenBufferSize = 512;
+
+  ZonePtr<ASTFunctionDecl> ParseFuncDecl();
+
+  ZonePtr<ASTExpr> ParseExpr(Precedence precedence);
   ZonePtr<ASTExpr> ParsePrimaryExpr();
-  ZonePtr<ASTExpr> ParseBinarExpr(ZonePtr<ASTExpr> left);
+  ZonePtr<ASTExpr> ParseGroupExpr();
+  ZonePtr<ASTExpr> ParseBinarExpr(ZonePtr<ASTExpr> left, ZonePtr<Token> op_token);
+  ZonePtr<ASTExpr> ParseAssignExpr(ZonePtr<ASTExpr> target, ZonePtr<Token> op_token, ASTAssignExpr::Operator op);
+  ZonePtr<ASTExpr> ParseUnaryExpr();
+  ZonePtr<ASTExpr> ParseMemberExpr();
+  ZonePtr<ASTExpr> ParseCallExpr(ZonePtr<ASTExpr> left);
+
+  ZonePtr<ASTStmt> ParseStmt();
+  ZonePtr<ASTStmt> ParseBlockStmt();
+  ZonePtr<ASTStmt> ParseVarStmt();
+  ZonePtr<ASTStmt> ParseIfStmt();
+  ZonePtr<ASTStmt> ParseWhileStmt();
+  ZonePtr<ASTStmt> ParseExprStmt();
+  ZonePtr<ASTStmt> ParseReturnStmt();
 
   ZonePtr<Token> Peek(int offset = 0);
   ZonePtr<Token> Next();
@@ -58,10 +93,14 @@ class Parser final {
   bool At(const TokenKind kind) { return At(TokenSet(kind)); }
   bool AtEnd() { return At(TokenKind::kEnd); }
   bool TryConsume(const TokenSet& tokens);
-  bool TryConsume(const TokenKind kind) { return At(TokenSet(kind)); }
-  bool Expect(const TokenSet& tokens);
-  bool Expect(const TokenKind kind) { return Expect(TokenSet(kind)); }
+  bool TryConsume(const TokenKind kind) { return TryConsume(TokenSet(kind)); }
+  ZonePtr<Token> Expect(const TokenSet& tokens);
+  ZonePtr<Token> Expect(const TokenKind kind) { return Expect(TokenSet(kind)); }
   void Synchronize();
+  int SpanBegin() const ;
+  TextSpan SpanEnd(int mark) const;
+
+  static Precedence GetPrecedence(TokenKind kind);
 
   Zone* zone_;
   DiagnosticReporter* reporter_;

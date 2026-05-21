@@ -11,7 +11,7 @@ print("Hi!\n")
 # Expressions/statements
 var result = 2 * (2 + 2);
 print("2 * (2 + 2) = {result}\n")
-s
+
 var a = readln();
 var b = readln();
 if (a > b) {

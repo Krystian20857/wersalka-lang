@@ -13,6 +13,8 @@ namespace wersalka {
 namespace lang {
 namespace runtime {
 
+using ZoneStr = std::string_view;
+
 class Zone {
  public:
   template <typename T, typename... Args>
@@ -21,7 +23,10 @@ class Zone {
   template <typename T>
   T* NewBuffer(std::size_t size);
 
-  std::string_view InternString(std::string_view view);
+  ZoneStr InternString(std::string_view view);
+
+  template <typename T>
+  std::span<const T> CopyArray(std::span<const T> span);
 
   template <typename T>
   T* InternReference(const T& ref);
@@ -62,19 +67,27 @@ class ZoneList {
 
   using const_iterator = const T*;
 
+  explicit ZoneList(Zone* zone) : ZoneList(zone, kDefaultCapacity) {}
   ZoneList(Zone* zone, int capacity);
 
   T& operator[](int idx) const { return elements_[idx]; }
   const_iterator begin() const { return &elements_[0]; }
   const_iterator end() const { return &elements_[size_]; }
   int size() const { return size_; }
+  int empty() const { return size_ == 0; }
 
   template <typename Elem>
   void Add(Zone* zone, Elem&& element);
+  void Clear();
+
+  T& Back() const;
+  void PopBack();
 
   std::vector<T> ToVector();
+  std::span<T> ToSpan();
 
  private:
+  static constexpr auto kDefaultCapacity = 16;
   static constexpr auto kGrowFactor = 2;
 
   T* elements_;
@@ -92,12 +105,26 @@ T* Zone::New(Args&&... args) {
   static_assert(std::is_trivially_destructible_v<T>,
                 "Usage of `Zone.New` require trivially destructible type");
   const auto ptr = buffer_.allocate(sizeof(T), alignof(T));
-  return new (ptr) T{std::forward<Args>(args)...};
+  return new (ptr) T(std::forward<Args>(args)...);
 }
 
 template <typename T>
 T* Zone::NewBuffer(const std::size_t size) {
   return static_cast<T*>(buffer_.allocate(size * sizeof(T), alignof(T)));
+}
+
+template <typename T>
+std::span<const T> Zone::CopyArray(std::span<const T> span) {
+  static_assert(
+      std::is_trivially_destructible_v<T>,
+      "Usage of `Zone.CopyArray` require trivially destructible type");
+  if (span.empty()) {
+    return std::span<T>{nullptr, 0};
+  }
+
+  const auto ptr = NewBuffer<T>(span.size());
+  std::copy(span.begin(), span.end(), ptr);
+  return std::span{ptr, span.size()};
 }
 
 template <typename T>
@@ -137,10 +164,27 @@ void ZoneList<T>::Add(Zone* zone, Elem&& element) {
   }
   elements_[size_++] = std::forward<Elem>(element);
 }
+template <typename T>
+void ZoneList<T>::Clear() {
+  size_ = 0;
+}
+template <typename T>
+T& ZoneList<T>::Back() const {
+  CHECK(size_ >= 1);
+  return elements_[size_ - 1];
+}
+template <typename T>
+void ZoneList<T>::PopBack() {
+  size_--;
+}
 
 template <typename T>
 std::vector<T> ZoneList<T>::ToVector() {
   return std::vector<T>{begin(), end()};
+}
+template <typename T>
+std::span<T> ZoneList<T>::ToSpan() {
+  return std::span{elements_, static_cast<std::size_t>(size_)};
 }
 
 }  // namespace runtime

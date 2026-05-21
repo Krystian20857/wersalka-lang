@@ -16,7 +16,7 @@ namespace runtime {
 
 enum class Severity { kError, kWarn, kNote, kHelp };
 
-struct Label {
+struct DiagnosticLabel {
   TextSpan span;
   std::string message;
 };
@@ -49,7 +49,7 @@ struct Diagnostic {
 
   Severity severity;
   std::string message;
-  std::vector<Label> labels;
+  std::vector<DiagnosticLabel> labels;
   std::vector<Diagnostic> notes;
 };
 

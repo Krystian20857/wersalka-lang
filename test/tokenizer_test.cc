@@ -13,6 +13,7 @@ namespace runtime {
 
 std::vector<TokenKind> kindsOf(const std::vector<Token>& tokens) {
   std::vector<TokenKind> kinds;
+  kinds.reserve(tokens.size());
   for (auto token : tokens) {
     kinds.push_back(token.kind);
   }
