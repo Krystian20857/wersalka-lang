@@ -11,48 +11,52 @@ namespace lang {
 namespace runtime {
 
 namespace {
-#define DEFINE_OPCODE(_mnemonic) \
-  OpcodeInfo { .mnemonic = _mnemonic }
+constexpr auto kExtraStackSize = 4;
+
+#define DEFINE_OPCODE(_mnemonic, _stack_in, _stack_out)                   \
+  OpcodeInfo {                                                            \
+    .mnemonic = _mnemonic, .stack_in = _stack_in, .stack_out = _stack_out \
+  }
 
 // clang-format off
 constexpr auto kOpcodes =
     std::array<OpcodeInfo, static_cast<size_t>(Opcode::kReserved)>{
-        DEFINE_OPCODE("NOP"),
+        DEFINE_OPCODE("NOP",           0, 0),
 
-        DEFINE_OPCODE("PUSH_CONST"),
+        DEFINE_OPCODE("PUSH_CONST",    0, 1),
 
-        DEFINE_OPCODE("LOAD_LOCAL"),
-        DEFINE_OPCODE("STORE_LOCAL"),
-        DEFINE_OPCODE("LOAD_GLOBAL"),
-        DEFINE_OPCODE("STORE_GLOBAL"),
+        DEFINE_OPCODE("LOAD_LOCAL",    0, 1),
+        DEFINE_OPCODE("STORE_LOCAL",   1, 0),
+        DEFINE_OPCODE("LOAD_GLOBAL",   0, 1),
+        DEFINE_OPCODE("STORE_GLOBAL",  1, 0),
 
-        DEFINE_OPCODE("JMP"),
-        DEFINE_OPCODE("JMP_IF_TRUE"),
-        DEFINE_OPCODE("JMP_IF_FALSE"),
+        DEFINE_OPCODE("JMP",           0, 0),
+        DEFINE_OPCODE("JMP_IF_TRUE",   1, 0),
+        DEFINE_OPCODE("JMP_IF_FALSE",  1, 0),
 
-        DEFINE_OPCODE("POP"),
-        DEFINE_OPCODE("DUP"),
-        DEFINE_OPCODE("SWAP"),
+        DEFINE_OPCODE("POP",           1, 0),
+        DEFINE_OPCODE("DUP",           1, 2),
+        DEFINE_OPCODE("SWAP",          1, 1),
 
-        DEFINE_OPCODE("ADD"),
-        DEFINE_OPCODE("SUB"),
-        DEFINE_OPCODE("MUL"),
-        DEFINE_OPCODE("DIV"),
-        DEFINE_OPCODE("MOD"),
-        DEFINE_OPCODE("AND"),
-        DEFINE_OPCODE("OR"),
-        DEFINE_OPCODE("XOR"),
-        DEFINE_OPCODE("SHL"),
-        DEFINE_OPCODE("SHR"),
-        DEFINE_OPCODE("CMP_GT"),
-        DEFINE_OPCODE("CMP_LT"),
-        DEFINE_OPCODE("CMP_GE"),
-        DEFINE_OPCODE("CMP_LE"),
-        DEFINE_OPCODE("CMP_EQ"),
-        DEFINE_OPCODE("NEG"),
+        DEFINE_OPCODE("ADD",           2, 1),
+        DEFINE_OPCODE("SUB",           2, 1),
+        DEFINE_OPCODE("MUL",           2, 1),
+        DEFINE_OPCODE("DIV",           2, 1),
+        DEFINE_OPCODE("MOD",           2, 1),
+        DEFINE_OPCODE("AND",           2, 1),
+        DEFINE_OPCODE("OR",            2, 1),
+        DEFINE_OPCODE("XOR",           2, 1),
+        DEFINE_OPCODE("SHL",           2, 1),
+        DEFINE_OPCODE("SHR",           2, 1),
+        DEFINE_OPCODE("CMP_GT",        2, 1),
+        DEFINE_OPCODE("CMP_LT",        2, 1),
+        DEFINE_OPCODE("CMP_GE",        2, 1),
+        DEFINE_OPCODE("CMP_LE",        2, 1),
+        DEFINE_OPCODE("CMP_EQ",        2, 1),
+        DEFINE_OPCODE("NEG",           1, 1),
 
-        DEFINE_OPCODE("INVOKE"),
-        DEFINE_OPCODE("RETURN"),
+        DEFINE_OPCODE("INVOKE",        1, 1),
+        DEFINE_OPCODE("RETURN",        1, 0),
     };
 // clang-format on
 
@@ -185,6 +189,60 @@ std::string BytecodeDisassembler::FormatConstant(
     default:
       ABSL_UNREACHABLE();
   }
+}
+int ComputeMaxStackDepth(std::span<const Instr> instructions,
+                      std::span<const ConstantDesc> constants) {
+  if (instructions.empty()) {
+    return kExtraStackSize;
+  }
+
+  std::vector<int> depth(instructions.size(), -1);
+  std::vector<int> worklist;  // bci list
+
+  depth[0] = 0;
+  worklist.push_back(0);
+
+  int max_depth = 0;
+
+  while (!worklist.empty()) {
+    const auto bci = worklist.back();
+    worklist.pop_back();
+
+    const auto instr = instructions[bci];
+    const auto opcode_info = GetOpcodeInfo(instr.op);
+    const auto new_stack =
+        depth[bci] + (opcode_info->stack_out - opcode_info->stack_in);
+    max_depth = std::max(max_depth, new_stack);
+
+    const auto propagate = [&](int bci) {
+      if (depth[bci] == -1) {
+        depth[bci] = new_stack;
+        worklist.push_back(bci);
+      } else {
+        CHECK(depth[bci] == new_stack) << "stack mismatch on frame merge";
+      }
+    };
+
+    switch (instr.op) {
+      case Opcode::kJmp: {
+        propagate(instr.c2);
+        break;
+      }
+      case Opcode::kJmpIfFalse:
+      case Opcode::kJmpIfTrue: {
+        propagate(instr.c2);
+        propagate(bci + 1);
+        break;
+      }
+      default: {
+        if (bci + 1 < instructions.size()) {
+          propagate(bci + 1);
+        }
+      }
+    }
+  }
+
+  return max_depth;
 }
 }  // namespace runtime
 }  // namespace lang

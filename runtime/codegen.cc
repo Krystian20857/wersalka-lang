@@ -40,11 +40,13 @@ ZonePtr<CodeObject> CodeGenerator::CreateCodeObject(
   }
 
   const auto rt_zone = runtime_->GetPermanentZone();
-  return rt_zone->New<CodeObject>(FreezeInstructions(rt_zone, builder),
-                                  FreezeConstants(rt_zone, builder),
-                                  ast_func->params.size(),  // arg count
-                                  0,                        // max stack TODO
-                                  locals.max_locals());
+  const auto instructions = FreezeInstructions(rt_zone, builder);
+  const auto constants = FreezeConstants(rt_zone, builder);
+  return rt_zone->New<CodeObject>(
+      instructions, constants,
+      ast_func->params.size(),                        // arg count
+      ComputeMaxStackDepth(instructions, constants),  // max stack TODO
+      locals.max_locals());
 }
 void CodeGenerator::CompileStmt(Zone& zone, BytecodeBuilder& builder,
                                 LocalsTable& locals, ZonePtr<ASTStmt> stmt) {

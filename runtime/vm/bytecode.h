@@ -39,6 +39,8 @@ enum class Opcode : uint8_t {
 
 struct OpcodeInfo {
   std::string_view mnemonic;
+  int stack_in;
+  int stack_out;
 };
 
 const OpcodeInfo* GetOpcodeInfo(Opcode opcode);
@@ -137,6 +139,9 @@ class BytecodeDisassembler {
   std::span<const Instr> instructions_;
   std::span<const ConstantDesc> constants_;
 };
+
+int ComputeMaxStackDepth(std::span<const Instr> instructions,
+                      std::span<const ConstantDesc> constants);
 
 }  // namespace runtime
 }  // namespace lang

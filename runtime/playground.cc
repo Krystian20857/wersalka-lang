@@ -4,7 +4,8 @@
 
 #include <iostream>
 
-#include "codegen.h"
+#include "absl/strings/str_format.h"
+#include "runtime/codegen.h"
 #include "runtime/diagnostic.h"
 #include "runtime/parser.h"
 #include "runtime/tokenizer.h"
@@ -16,22 +17,11 @@ namespace runtime {
 int Main() {
   const auto source = R"(
 func main() {
-  var a = 1 + (2 * 3);
-
   if (a > 5) {
     print(1);
   } else {
     print(2);
   }
-
-  test(1000);
-
-  return 1337;
-}
-
-func test(p) {
-  var a = 0;
-  a /= 10;
 }
 )";
   Zone zone;
@@ -50,7 +40,8 @@ func test(p) {
     const auto compile_unit = Cast<ASTCompileUnit>(ast);
     for (const auto function : compile_unit->functions) {
       const auto object = codegen.CreateCodeObject(function);
-      std::cout << object->instructions.size() << "\n";
+      std::cout << absl::StrFormat("MAX_STACK %d\n MAX_LOCALS %d\n",
+                                   object->max_stack, object->max_locals);
     }
   }
 

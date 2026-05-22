@@ -51,6 +51,8 @@ Value VMInterpreter::Execute(VMThread* thread, FunctionObject* entry) {
     return thread->PopStack();
   }
 
+  Run(thread);
+
   // TODO: wrap exception with some EvalError object
   //  otherwise it's unrecognizable from normal return
   return thread->GetCurrentException();
