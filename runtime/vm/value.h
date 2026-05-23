@@ -67,6 +67,14 @@ class Value {
 
   Raw GetRawValue() const { return bits_; }
   Raw GetTagValue() const { return bits_ & ValueTags::kTagMask; }
+  int64_t GetIntValue() const {
+    CHECK(IsInt());
+    return bits_ >> 3;
+  }
+  bool GetBoolValue() const {
+    CHECK(IsBool());
+    return bits_ == (ValueTags::kSpecialTag | ValueTags::kTruePayload);
+  }
 
   bool IsInt() const { return GetTagValue() == ValueTags::kIntTag; }
   bool IsObject() const { return GetTagValue() == ValueTags::kObjectTag; }
@@ -84,13 +92,16 @@ class Value {
   }
 
   template <typename T>
-  T* GetCheckedObject() {
+  std::optional<T*> GetCheckedObject() const {
     static_assert(std::is_base_of_v<Object, T> || std::is_same_v<Object, T>,
                   "T must derive from `Object`");
     CHECK(IsObject());
     Object* object = GetObject();
-    CHECK_EQ(object->kind(), ObjectTraits<T>::kKind);
-    return static_cast<T*>(object);
+    if (object->kind() == T::kKind) {
+      return static_cast<T*>(object);
+    } else {
+      return std::nullopt;
+    }
   }
 
  private:

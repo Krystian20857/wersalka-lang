@@ -22,6 +22,7 @@ enum class Opcode : uint8_t {
   kLoadLocal, kStoreLocal,
   kLoadGlobal, kStoreGlobal,
 
+  // TODO: could I have only `kJmpIfTrue`?
   kJmp, kJmpIfTrue, kJmpIfFalse,
 
   kPop, kDup, kSwap,
@@ -95,6 +96,7 @@ class BytecodeBuilder {
   int Emit(Opcode opcode, uint16_t c1, uint32_t c2);
   int EmitVarGlobal(Opcode opcode, ZoneStr symbol_name);
   int EmitVarLocal(Opcode opcode, uint16_t slot);
+  int EmitInvoke(Opcode opcode, uint16_t arg_count);
   int Emit(Opcode opcode);
   void EmitJump(Opcode opcode, Label label);
   void EmitJump(Opcode opcode, uint16_t c1, Label label);

@@ -9,6 +9,7 @@
 
 #include "runtime/vm/bytecode.h"
 #include "runtime/vm/object.h"
+#include "runtime/vm/value.h"
 
 namespace wersalka {
 namespace lang {
@@ -36,11 +37,11 @@ struct CodeObject {
 struct FunctionObject : public Object {
   static constexpr auto kKind = ObjectKind::kFunction;
 
-  explicit FunctionObject(CodeObject* code_obj)
-      : Object(ObjectKind::kFunction), code_obj(code_obj) {}
+  explicit FunctionObject(const ZoneStr name, const ZonePtr<CodeObject> code_obj)
+      : Object(ObjectKind::kFunction), name(name), code_obj(code_obj) {}
 
-  CodeObject* code_obj;
-  std::string name;
+  ZoneStr name;
+  const ZonePtr<CodeObject> code_obj;
   // TODO: add function symbol here
 };
 

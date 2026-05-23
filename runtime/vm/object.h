@@ -9,7 +9,7 @@ namespace wersalka {
 namespace lang {
 namespace runtime {
 
-enum class ObjectKind { kFunction, kString, kHeapRef };
+enum class ObjectKind { kFunction, kNativeFunction, kString, kHeapRef };
 
 class Object {
  public:

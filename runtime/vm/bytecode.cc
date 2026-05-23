@@ -72,7 +72,7 @@ ConstantDesc ConstantDesc::CreateUInt(const uint64_t value) {
 ConstantDesc ConstantDesc::CreateNull() { return {.kind = Kind::kNull}; }
 ConstantDesc ConstantDesc::CreateString(const std::string_view str) {
   // ReSharper disable once CppDFALocalValueEscapesFunction
-  return {.kind = Kind::kUInt, .str_v = str};
+  return {.kind = Kind::kString, .str_v = str};
 }
 Label BytecodeBuilder::NewLabel() {
   const auto id = labels_.size();
@@ -113,6 +113,10 @@ int BytecodeBuilder::EmitVarGlobal(Opcode opcode, ZoneStr symbol_name) {
 int BytecodeBuilder::EmitVarLocal(Opcode opcode, uint16_t slot) {
   CHECK(opcode == Opcode::kLoadLocal || opcode == Opcode::kStoreLocal);
   return Emit(opcode, slot, 0);
+}
+int BytecodeBuilder::EmitInvoke(Opcode opcode, uint16_t arg_count) {
+  CHECK(opcode == Opcode::kInvoke);
+  return Emit(opcode, arg_count, 0);
 }
 int BytecodeBuilder::Emit(Opcode opcode) { return Emit(opcode, 0, 0); }
 void BytecodeBuilder::EmitJump(Opcode opcode, Label label) {
@@ -163,6 +167,10 @@ void BytecodeDisassembler::Disassemble(std::ostream& stream) const {
         stream << " " << absl::StrFormat("bci: `%d`", instr.c2);
         break;
       }
+      case Opcode::kInvoke: {
+        stream << " " << absl::StrFormat("args: `%d`", instr.c1);
+        break;
+      }
       default: {
         // noop
         break;
@@ -191,7 +199,7 @@ std::string BytecodeDisassembler::FormatConstant(
   }
 }
 int ComputeMaxStackDepth(std::span<const Instr> instructions,
-                      std::span<const ConstantDesc> constants) {
+                         std::span<const ConstantDesc> constants) {
   if (instructions.empty()) {
     return kExtraStackSize;
   }
@@ -210,8 +218,11 @@ int ComputeMaxStackDepth(std::span<const Instr> instructions,
 
     const auto instr = instructions[bci];
     const auto opcode_info = GetOpcodeInfo(instr.op);
-    const auto new_stack =
-        depth[bci] + (opcode_info->stack_out - opcode_info->stack_in);
+    const auto stack_effect =
+        instr.op == Opcode::kInvoke
+            ? -instr.c1
+            : (opcode_info->stack_out - opcode_info->stack_in);
+    const auto new_stack = depth[bci] + stack_effect;
     max_depth = std::max(max_depth, new_stack);
 
     const auto propagate = [&](int bci) {
@@ -219,7 +230,9 @@ int ComputeMaxStackDepth(std::span<const Instr> instructions,
         depth[bci] = new_stack;
         worklist.push_back(bci);
       } else {
-        CHECK(depth[bci] == new_stack) << "stack mismatch on frame merge";
+        CHECK(depth[bci] == new_stack)
+            << "stack mismatch on frame merge, bci " << bci << ", expected "
+            << new_stack << " was " << depth[bci];
       }
     };
 

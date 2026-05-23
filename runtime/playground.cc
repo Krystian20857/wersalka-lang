@@ -9,6 +9,7 @@
 #include "runtime/diagnostic.h"
 #include "runtime/parser.h"
 #include "runtime/tokenizer.h"
+#include "runtime/vm/vm.h"
 
 namespace wersalka {
 namespace lang {
@@ -16,12 +17,24 @@ namespace runtime {
 
 int Main() {
   const auto source = R"(
-func main() {
-  if (a > 5) {
-    print(1);
-  } else {
-    print(2);
+func params_test(a, b, c) {
+  return a + b * c;
+}
+
+func while_test(n, c) {
+  while (n < c) {
+    if (n % 2 == 0) {
+      print_number(n * 10);
+    } else {
+      print_number(n);
+    }
+    n += 1;
   }
+}
+
+func main() {
+  print_number(params_test(1, 2, 3));
+  while_test(2, 10);
 }
 )";
   Zone zone;
@@ -34,15 +47,40 @@ func main() {
   std::cout << DumpAST(ast);
 
   Runtime runtime(&zone);
+  runtime.BindGlobalFunction("print_number", 1,
+                             [](const auto context, const auto args) {
+                               const auto arg0 = args[0];
+                               if (!arg0.IsInt()) {
+                                 *context->exception = Value::CreateNull();
+                                 return Value::CreateNull();
+                               }
+                               std::cout << arg0.GetIntValue() << "\n";
+                               return Value::CreateNull();
+                             });
   CodeGenerator codegen(&runtime, &reporter);
 
   if (Is<ASTCompileUnit>(ast)) {
     const auto compile_unit = Cast<ASTCompileUnit>(ast);
     for (const auto function : compile_unit->functions) {
       const auto object = codegen.CreateCodeObject(function);
-      std::cout << absl::StrFormat("MAX_STACK %d\n MAX_LOCALS %d\n",
+      std::cout << absl::StrFormat("MAX_STACK %d\nMAX_LOCALS %d\n",
                                    object->max_stack, object->max_locals);
+      const auto func_object = runtime.GetPermanentZone()->New<FunctionObject>(
+          runtime.GetPermanentZone()->InternString(function->name), object);
+      runtime.RegisterFunction(func_object);
     }
+  }
+
+  std::cout << std::endl;  // flush
+
+  const auto main_func = runtime.LookupFunction("main");
+  CHECK(main_func.has_value()) << "no main";
+
+  VMInterpreter interpreter(&runtime);
+  const auto main_thread = std::make_unique<VMThread>();
+  const auto value = interpreter.Execute(main_thread.get(), *main_func);
+  if (value.IsNull()) {
+    std::cout << "null\n";
   }
 
   return 0;

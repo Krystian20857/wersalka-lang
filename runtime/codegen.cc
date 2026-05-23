@@ -30,19 +30,25 @@ ZonePtr<CodeObject> CodeGenerator::CreateCodeObject(
 
   CompileStmt(builder_zone, builder, locals, ast_func->block);
 
-  // add nop so jumps don't go over insn count
-  builder.Emit(Opcode::kNop);
+  // native return check
+  if (!builder.instructions().empty() &&
+      builder.instructions()[builder.instructions().size() - 1].op !=
+          Opcode::kReturn) {
+    builder.EmitPushConst(ConstantDesc::CreateNull());
+    builder.Emit(Opcode::kReturn);
+  }
 
   if (kDebugDisassembly) {
     std::cout << absl::StrFormat("Disassembly `%s`\n", ast_func->name);
     BytecodeDisassembler(builder.instructions(), builder.constants())
         .Disassemble(std::cout);
+    std::cout << std::endl;
   }
 
   const auto rt_zone = runtime_->GetPermanentZone();
   const auto instructions = FreezeInstructions(rt_zone, builder);
   const auto constants = FreezeConstants(rt_zone, builder);
-  return rt_zone->New<CodeObject>(
+  return runtime_->CreateCodeObject(
       instructions, constants,
       ast_func->params.size(),                        // arg count
       ComputeMaxStackDepth(instructions, constants),  // max stack TODO
@@ -162,7 +168,7 @@ void CodeGenerator::CompileExpr(Zone& zone, BytecodeBuilder& builder,
       for (const auto arg : call_expr->args) {
         CompileExpr(zone, builder, locals, arg);
       }
-      builder.Emit(Opcode::kInvoke);
+      builder.EmitInvoke(Opcode::kInvoke, call_expr->args.size());
       break;
     }
     case ASTNode::Kind::kAssignExpr: {
@@ -182,7 +188,7 @@ void CodeGenerator::CompileBinaryExpr(Zone& zone, BytecodeBuilder& builder,
     builder.EmitVarGlobal(Opcode::kLoadGlobal, "__builtin_exp");
     CompileExpr(zone, builder, locals, expr->left);
     CompileExpr(zone, builder, locals, expr->right);
-    builder.Emit(Opcode::kInvoke);
+    builder.EmitInvoke(Opcode::kInvoke, 2);
     return;
   }
 
@@ -334,6 +340,7 @@ void CodeGenerator::CompileLValue(Zone& zone, BytecodeBuilder& builder,
   if (target->kind() == ASTNode::Kind::kIdentExpr) {
     const auto ident_expr = Cast<ASTIdentExpr>(target);
     const auto slot = locals.LookupVar(ident_expr->ident);
+    builder.Emit(Opcode::kDup);
     if (slot) {
       builder.EmitVarLocal(Opcode::kStoreLocal, *slot);
     } else {
@@ -365,6 +372,7 @@ void CodeGenerator::CompileRValue(Zone& zone, BytecodeBuilder& builder,
 }
 ConstantDesc CodeGenerator::CompileConstant(BytecodeBuilder& builder,
                                             ZonePtr<Token> token) {
+  // TODO: signed/unsigned
   switch (token->value_kind) {
     case ValueKind::kNull:
       return {.kind = ConstantDesc::Kind::kNull};
@@ -375,9 +383,9 @@ ConstantDesc CodeGenerator::CompileConstant(BytecodeBuilder& builder,
     case ValueKind::kFloat:
       return {.kind = ConstantDesc::Kind::kFloat, .float_v = token->float_v};
     case ValueKind::kBool:
-      return {.kind = ConstantDesc::Kind::kFloat, .float_v = token->float_v};
+      return {.kind = ConstantDesc::Kind::kBool, .bool_v = token->bool_v};
     case ValueKind::kStrSegment:
-      return {.kind = ConstantDesc::Kind::kFloat, .str_v = token->str_v};
+      return {.kind = ConstantDesc::Kind::kString, .str_v = token->str_v};
     default:
       ABSL_UNREACHABLE();
   }
