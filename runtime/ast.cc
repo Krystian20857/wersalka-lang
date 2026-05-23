@@ -228,6 +228,20 @@ static void DumpNode(const ASTNode* node, std::string& out, int depth) {
       }
       break;
     }
+    case ASTNode::Kind::kTemplateExpr: {
+      const auto* n = static_cast<const ASTTemplateExpr*>(node);
+      absl::StrAppendFormat(&out, "%sTemplateExpr\n", indent);
+      for (int i = 0; i < n->segments.size(); i++) {
+        const auto& seg = n->segments[i];
+        if (seg.kind == ASTTemplateExpr::Segment::kPart) {
+          absl::StrAppendFormat(&out, "%s  Part [%s]\n", indent, seg.str_v);
+        } else {
+          absl::StrAppendFormat(&out, "%s  Expr\n", indent);
+          DumpNode(seg.expr_v, out, depth + 2);
+        }
+      }
+      break;
+    }
     default:
       ABSL_UNREACHABLE();
   }

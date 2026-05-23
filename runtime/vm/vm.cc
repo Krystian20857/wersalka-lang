@@ -45,9 +45,7 @@ VMFrame* VMThread::PushFrame(FunctionObject* function, CodeObject* code,
 }
 VMFrame VMThread::PopFrame() { return frames_[frame_count_--]; }
 VMFrame* VMThread::CurrentFrame() { return &frames_[frame_count_]; }
-void VMThread::SetPendingException(Value value) {
-  Unwind(value);
-}
+void VMThread::SetPendingException(Value value) { Unwind(value); }
 Value VMThread::GetCurrentException() { return pending_exception_; }
 void VMThread::SetThreadState(VMThreadState state) { thread_state_ = state; }
 VMThreadState VMThread::GetThreadState() const { return thread_state_; }
@@ -158,13 +156,16 @@ Value VMInterpreter::Run(VMThread* thread) {
       case Opcode::kSwap: {
         const auto v1 = thread->PopStack();
         const auto v2 = thread->PopStack();
-        thread->PushStack(v2);
         thread->PushStack(v1);
+        thread->PushStack(v2);
         frame->pc++;
         break;
       }
       case Opcode::kAdd: {
-        ExecuteBinIntOp(thread, frame, std::plus<uint64_t>{});
+        const auto right = thread->PopStack();
+        const auto left = thread->PopStack();
+        thread->PushStack(VMIntrinsics::Add(thread, left, right));
+        frame->pc++;
         break;
       }
       case Opcode::kSub: {
@@ -323,7 +324,7 @@ bool VMInterpreter::CallFunction(VMThread* thread, FunctionObject* function,
   thread->SetStackTop(frame->locals + code->max_locals);
   return true;
 }
-Value VMInterpreter::MaterializeConstant(ConstantDesc desc) {
+Value VMInterpreter::MaterializeConstant(ConstantDesc desc) const {
   switch (desc.kind) {
     // TODO: based on Int value, allocate on heap as boxed value
     case ConstantDesc::Kind::kInt:
@@ -338,10 +339,8 @@ Value VMInterpreter::MaterializeConstant(ConstantDesc desc) {
       return Value::CreateBool(desc.bool_v);
     case ConstantDesc::Kind::kNull:
       return Value::CreateNull();
-    case ConstantDesc::Kind::kString: {
-      // TODO: implement
-      ABSL_UNREACHABLE();
-    }
+    case ConstantDesc::Kind::kString:
+      return Value::CreateObject(StringObject::New(runtime_->gc(), desc.str_v));
     default: {
       ABSL_UNREACHABLE();
     }
@@ -371,6 +370,11 @@ std::optional<int64_t> VMIntrinsics::CoerceToBool(Value value) {
   }
   return std::nullopt;
 }
+GCPtr<StringObject> VMIntrinsics::CoerceToString(VMThread* thread,
+                                                 const Value value) {
+  return StringObject::New(thread->runtime()->gc(),
+                           ToString(thread->runtime(), value));
+}
 bool VMIntrinsics::IsTruthful(Value value) {
   if (value.IsNull()) {
     return false;
@@ -383,6 +387,20 @@ bool VMIntrinsics::IsTruthful(Value value) {
   }
   return false;
 }
+Value VMIntrinsics::Add(VMThread* thread, Value left, Value right) {
+  // string concat
+  const auto do_concat =
+      (left.IsObject() && left.GetObject()->kind() == ObjectKind::kString) ||
+      (right.IsObject() && right.GetObject()->kind() == ObjectKind::kString);
+  if (do_concat) {
+    const auto left_string = CoerceToString(thread, left);
+    const auto right_string = CoerceToString(thread, right);
+    return Value::CreateObject(StringObject::Concat(thread->runtime()->gc(),
+                                                    left_string, right_string));
+  }
+  // int add
+  return BinIntOp(thread, left, right, std::plus<int64_t>{});
+}
 Value VMIntrinsics::Negate(VMThread* thread, Value value) {
   const auto value_coerced = CoerceToInt(value);
   if (!value_coerced) {
@@ -391,6 +409,37 @@ Value VMIntrinsics::Negate(VMThread* thread, Value value) {
     return Value::CreateNull();
   }
   return Value::CreateInt(-(*value_coerced));
+}
+std::string VMIntrinsics::ToString(Runtime* runtime, Value value) {
+  // TODO: remove unnecessary string intermediate allocation here
+  if (value.IsNull()) {
+    return "null";
+  }
+  if (value.IsInt()) {
+    return std::to_string(value.GetIntValue());
+  }
+  if (value.IsBool()) {
+    return std::to_string(value.GetBoolValue());
+  }
+  if (value.IsObject()) {
+    const auto obj = value.GetObject();
+    switch (obj->kind()) {
+      case ObjectKind::kNativeFunction:
+      case ObjectKind::kFunction:
+        return absl::StrFormat("<function>@%d", IdentityHash(runtime, obj));
+      case ObjectKind::kString: {
+        const auto string_obj = static_cast<StringObject*>(obj);
+        return std::string(string_obj->GetChars(), string_obj->length());
+      }
+      default:
+        return absl::StrFormat("<object>@%d", IdentityHash(runtime, obj));
+    }
+  }
+  return "unknown";
+}
+int VMIntrinsics::IdentityHash(Runtime* runtime, Object* object) {
+  const auto ptr = reinterpret_cast<uintptr_t>(object);
+  return (ptr >> 32) + (ptr & 0xFFFF) * 13;
 }
 }  // namespace runtime
 }  // namespace lang

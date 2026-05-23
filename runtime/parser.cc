@@ -21,7 +21,8 @@ constexpr auto kConstExprBeginTokens =
              TokenKind::kNullLit};
 constexpr auto kExprBeginTokens =
     kConstExprBeginTokens | kUnaryExprBeginTokens |
-    TokenSet{TokenKind::kIdent, TokenKind::kOpenParen};
+    TokenSet{TokenKind::kIdent, TokenKind::kOpenParen,
+             TokenKind::kTemplateBegin};
 constexpr auto kStmtBeginTokens =
     TokenSet{TokenKind::kVar, TokenKind::kOpenBrace, TokenKind::kIf,
              TokenKind::kWhile, TokenKind::kReturn} |
@@ -139,6 +140,10 @@ ZonePtr<ASTExpr> Parser::ParsePrimaryExpr() {
 
   if (At(TokenKind::kIdent)) {
     return ParseMemberExpr();
+  }
+
+  if (At(TokenKind::kTemplateBegin)) {
+    return ParseTemplateExpr();
   }
 
   ABSL_UNREACHABLE();
@@ -306,6 +311,30 @@ ZonePtr<ASTExpr> Parser::ParseCallExpr(ZonePtr<ASTExpr> left) {
   }
   Expect(TokenKind::kCloseParen);
   return zone_->New<ASTCallExpr>(SpanEnd(mark), left, args);
+}
+ZonePtr<ASTExpr> Parser::ParseTemplateExpr() {
+  const auto mark = SpanBegin();
+  ZoneList<ASTTemplateExpr::Segment> segments(zone_);
+  Expect(TokenKind::kTemplateBegin);
+  while (!AtEnd()) {
+    if (At(TokenKind::kTemplateExprBegin)) {
+      Next();
+      const auto expr = ParseExpr(Precedence::kNone);
+      segments.Add(
+          zone_, ASTTemplateExpr::Segment{
+                     .kind = ASTTemplateExpr::Segment::kExpr, .expr_v = expr});
+      Expect(TokenKind::kTemplateExprEnd);
+    } else if (At(TokenKind::kTemplateSegment)) {
+      segments.Add(zone_, ASTTemplateExpr::Segment{
+                              .kind = ASTTemplateExpr::Segment::kPart,
+                              .str_v = zone_->InternString(Peek()->str_v)});
+      Next();
+    } else {
+      break;
+    }
+  }
+  Expect(TokenKind::kTemplateEnd);
+  return zone_->New<ASTTemplateExpr>(SpanEnd(mark), segments);
 }
 ZonePtr<ASTStmt> Parser::ParseStmt() {
   if (At(TokenKind::kVar)) {

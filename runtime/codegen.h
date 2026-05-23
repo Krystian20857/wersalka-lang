@@ -34,10 +34,12 @@ class CodeGenerator {
                         LocalsTable& locals, ZonePtr<ASTUnaryExpr> expr);
   void CompileAssignExpr(Zone& zone, BytecodeBuilder& builder,
                          LocalsTable& locals, ZonePtr<ASTAssignExpr> expr);
-  void CompileLValue(Zone& zone, BytecodeBuilder& builder,
-                        LocalsTable& locals, ZonePtr<ASTExpr> target);
-  void CompileRValue(Zone& zone, BytecodeBuilder& builder,
-                        LocalsTable& locals, ZonePtr<ASTExpr> value);
+  void CompileTemplateExpr(Zone& zone, BytecodeBuilder& builder,
+                           LocalsTable& locals, ZonePtr<ASTTemplateExpr> expr);
+  void CompileLValue(Zone& zone, BytecodeBuilder& builder, LocalsTable& locals,
+                     ZonePtr<ASTExpr> target);
+  void CompileRValue(Zone& zone, BytecodeBuilder& builder, LocalsTable& locals,
+                     ZonePtr<ASTExpr> value);
   ConstantDesc CompileConstant(BytecodeBuilder& builder, ZonePtr<Token> token);
   std::span<const ConstantDesc> FreezeConstants(Zone* zone,
                                                 const BytecodeBuilder& builder);

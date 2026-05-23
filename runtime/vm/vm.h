@@ -42,10 +42,13 @@ class VMThread {
   static constexpr auto kMaxFrameSize = 4096;
   static constexpr auto kNativeArgumentBufferSize = 64;
 
-  VMThread()
-      : stack_top_(stack_.data()),
+  explicit VMThread(Runtime* runtime)
+      : runtime_(runtime),
+        stack_top_(stack_.data()),
         frame_count_(0),
         thread_state_(VMThreadState::kRunning) {}
+
+  Runtime* runtime() const { return runtime_; }
 
   Value PopStack();
   Value PeekStack();
@@ -65,6 +68,7 @@ class VMThread {
   void Unwind(Value exception);
 
  private:
+  Runtime* runtime_;
   std::array<Value, kMaxStackSize> stack_;
   Value* stack_top_;
   std::array<VMFrame, kMaxFrameSize> frames_;
@@ -85,7 +89,7 @@ class VMInterpreter {
   Value Run(VMThread* thread);
   bool CallFunction(VMThread* thread, FunctionObject* function, int arg_count);
 
-  Value MaterializeConstant(ConstantDesc desc);
+  Value MaterializeConstant(ConstantDesc desc) const;
 
   template <typename Op>
   static void ExecuteBinIntOp(VMThread* thread, VMFrame* frame, Op op);
@@ -97,9 +101,13 @@ class VMIntrinsics {
  public:
   static std::optional<int64_t> CoerceToInt(Value value);
   static std::optional<int64_t> CoerceToBool(Value value);
+  static GCPtr<StringObject> CoerceToString(VMThread* thread, Value value);
 
   static bool IsTruthful(Value value);
+  static Value Add(VMThread* thread, Value left, Value right);
   static Value Negate(VMThread* thread, Value value);
+  static std::string ToString(Runtime* runtime, Value value);
+  static int IdentityHash(Runtime* runtime, Object* object);
 
   // lovely template
   template <typename Op>

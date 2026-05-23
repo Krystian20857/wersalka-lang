@@ -7,6 +7,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "runtime/vm/code_object.h"
+#include "runtime/vm/gc.h"
 #include "runtime/vm/value.h"
 #include "runtime/zone.h"
 
@@ -38,7 +39,8 @@ struct NativeFunctionObject : public Object {
 
 class Runtime {
  public:
-  explicit Runtime(Zone* zone) : zone_(zone) {}
+  explicit Runtime(Zone* zone)
+      : zone_(zone), gc_(std::make_unique<MarkSweepGC>()) {}
 
   Zone* GetPermanentZone() const { return zone_; }
 
@@ -57,11 +59,14 @@ class Runtime {
   void RegisterFunction(FunctionObject* function);
   std::optional<FunctionObject*> LookupFunction(std::string_view name);
 
+  GC* gc() const { return gc_.get(); }
+
  private:
   Zone* zone_;
   absl::flat_hash_map<ZoneStr, Value> builtin_globals_;
   std::vector<ZonePtr<CodeObject>> code_objects;
   absl::flat_hash_map<ZoneStr, FunctionObject*> functions_;
+  std::unique_ptr<GC> gc_;
 };
 
 }  // namespace runtime

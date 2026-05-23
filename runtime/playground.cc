@@ -24,17 +24,22 @@ func params_test(a, b, c) {
 func while_test(n, c) {
   while (n < c) {
     if (n % 2 == 0) {
-      print_number(n * 10);
+      print(n * 10);
     } else {
-      print_number(n);
+      print(n);
     }
     n += 1;
   }
 }
 
+func template_test(a, b) {
+  return "a = {a}, b = {b}, a + b = {a + b}";
+}
+
 func main() {
-  print_number(params_test(1, 2, 3));
-  while_test(2, 10);
+  # print(params_test(1, 2, 3));
+  # while_test(2, 10);
+  print(template_test(1337, 2137));
 }
 )";
   Zone zone;
@@ -47,16 +52,12 @@ func main() {
   std::cout << DumpAST(ast);
 
   Runtime runtime(&zone);
-  runtime.BindGlobalFunction("print_number", 1,
-                             [](const auto context, const auto args) {
-                               const auto arg0 = args[0];
-                               if (!arg0.IsInt()) {
-                                 *context->exception = Value::CreateNull();
-                                 return Value::CreateNull();
-                               }
-                               std::cout << arg0.GetIntValue() << "\n";
-                               return Value::CreateNull();
-                             });
+  runtime.BindGlobalFunction(
+      "print", 1, [](const auto context, const auto args) {
+        const auto arg0 = args[0];
+        std::cout << VMIntrinsics::ToString(context->runtime, arg0) << "\n";
+        return Value::CreateNull();
+      });
   CodeGenerator codegen(&runtime, &reporter);
 
   if (Is<ASTCompileUnit>(ast)) {
@@ -77,7 +78,7 @@ func main() {
   CHECK(main_func.has_value()) << "no main";
 
   VMInterpreter interpreter(&runtime);
-  const auto main_thread = std::make_unique<VMThread>();
+  const auto main_thread = std::make_unique<VMThread>(&runtime);
   const auto value = interpreter.Execute(main_thread.get(), *main_func);
   if (value.IsNull()) {
     std::cout << "null\n";

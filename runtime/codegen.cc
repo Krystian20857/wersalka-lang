@@ -176,6 +176,11 @@ void CodeGenerator::CompileExpr(Zone& zone, BytecodeBuilder& builder,
       CompileAssignExpr(zone, builder, locals, assign_expr);
       break;
     }
+    case ASTNode::Kind::kTemplateExpr: {
+      const auto template_expr = Cast<ASTTemplateExpr>(expr);
+      CompileTemplateExpr(zone, builder, locals, template_expr);
+      break;
+    }
     default:
       ABSL_UNREACHABLE();
   }
@@ -333,6 +338,39 @@ void CodeGenerator::CompileAssignExpr(Zone& zone, BytecodeBuilder& builder,
   CompileExpr(zone, builder, locals, expr->value);
   builder.Emit(op);
   CompileLValue(zone, builder, locals, expr->target);
+}
+void CodeGenerator::CompileTemplateExpr(Zone& zone, BytecodeBuilder& builder,
+                                        LocalsTable& locals,
+                                        ZonePtr<ASTTemplateExpr> expr) {
+  // is that even possible?
+  if (expr->segments.empty()) {
+    builder.EmitPushConst(ConstantDesc::CreateString(""));
+    return;
+  }
+
+  const auto segments = expr->segments;
+  auto push_segments = [&](const ASTTemplateExpr::Segment& segment) {
+    switch (segment.kind) {
+      case ASTTemplateExpr::Segment::kPart: {
+        builder.EmitPushConst(ConstantDesc::CreateString(segment.str_v));
+        break;
+      }
+      case ASTTemplateExpr::Segment::kExpr: {
+        CompileExpr(zone, builder, locals, segment.expr_v);
+        break;
+      }
+    }
+  };
+
+  const auto acc = locals.DefineSyntheticVar();
+  builder.EmitPushConst(ConstantDesc::CreateString(""));
+  builder.EmitVarLocal(Opcode::kStoreLocal, acc);
+  for (auto n = 0; n < segments.size(); ++n) {
+    builder.EmitVarLocal(Opcode::kLoadLocal, acc);
+    push_segments(segments[n]);
+    builder.Emit(Opcode::kAdd);
+    builder.EmitVarLocal(Opcode::kStoreLocal, acc);
+  }
 }
 void CodeGenerator::CompileLValue(Zone& zone, BytecodeBuilder& builder,
                                   LocalsTable& locals,

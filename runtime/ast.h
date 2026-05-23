@@ -39,6 +39,7 @@ class ASTNode : public ZoneObject {
 
     // expressions
     kConstExpr,
+    kTemplateExpr,
     kBinaryExpr,
     kUnaryExpr,
     kGroupExpr,
@@ -187,6 +188,25 @@ struct ASTConstExpr : ASTExpr {
       : ASTExpr(Kind::kConstExpr, span), value(value) {}
 
   const ZonePtr<Token> value;
+};
+
+struct ASTTemplateExpr : ASTExpr {
+  static constexpr auto kKind = Kind::kTemplateExpr;
+
+  struct Segment {
+    enum Kind { kPart, kExpr };
+
+    Kind kind;
+    union {
+      ZoneStr str_v;
+      ZonePtr<ASTExpr> expr_v;
+    };
+  };
+
+  explicit ASTTemplateExpr(const TextSpan span, const ZoneList<Segment> segments)
+      : ASTExpr(Kind::kTemplateExpr, span), segments(segments) {}
+
+  ZoneList<Segment> segments;
 };
 
 struct ASTBinaryExpr : ASTExpr {
