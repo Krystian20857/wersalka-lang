@@ -34,15 +34,22 @@ struct CodeObject {
   uint32_t max_locals;
 };
 
-struct FunctionObject : public Object {
+class FunctionObject : public Object {
+ public:
   static constexpr auto kKind = ObjectKind::kFunction;
 
-  explicit FunctionObject(const ZoneStr name, const ZonePtr<CodeObject> code_obj)
-      : Object(ObjectKind::kFunction), name(name), code_obj(code_obj) {}
+  ZoneStr name() const { return name_; }
+  ZonePtr<CodeObject> code_obj() const { return code_obj_; }
 
-  ZoneStr name;
-  const ZonePtr<CodeObject> code_obj;
-  // TODO: add function symbol here
+ private:
+  explicit FunctionObject(const ZoneStr name,
+                          const ZonePtr<CodeObject> code_obj)
+      : Object(ObjectKind::kFunction), name_(name), code_obj_(code_obj) {}
+
+  friend class GC;
+
+  ZoneStr name_;
+  ZonePtr<CodeObject> code_obj_;
 };
 
 }  // namespace runtime

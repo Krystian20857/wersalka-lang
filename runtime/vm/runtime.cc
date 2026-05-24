@@ -10,7 +10,7 @@ void Runtime::AddGlobalValue(const std::string_view name, const Value value) {
 void Runtime::BindGlobalFunction(std::string_view name, int arg_count,
                                  NativeFunctionObject::HandlerFn handler) {
   builtin_globals_[zone_->InternString(name)] =
-      Value::CreateObject(zone_->New<NativeFunctionObject>(arg_count, handler));
+      Value::CreateObject(gc_->New<NativeFunctionObject>(arg_count, handler));
 }
 Value Runtime::LookupGlobal(std::string_view name) {
   if (auto global = builtin_globals_.find(name);
@@ -32,7 +32,7 @@ ZonePtr<CodeObject> Runtime::CreateCodeObject(
   return code_object;
 }
 void Runtime::RegisterFunction(FunctionObject* function) {
-  functions_[zone_->InternString(function->name)] = function;
+  functions_[zone_->InternString(function->name())] = function;
 }
 std::optional<FunctionObject*> Runtime::LookupFunction(std::string_view name) {
   if (const auto fn = functions_.find(name); fn != functions_.end()) {

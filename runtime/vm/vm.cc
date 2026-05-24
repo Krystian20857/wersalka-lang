@@ -264,7 +264,7 @@ Value VMInterpreter::Run(VMThread* thread) {
           auto native_context =
               NativeContext{.runtime = runtime_, .exception = nullptr};
           thread->SetThreadState(VMThreadState::kNative);
-          const auto result = fn->handler(
+          const auto result = fn->handler()(
               &native_context, {thread->native_args_buffer_.data(),
                                 static_cast<std::size_t>(arg_count)});
           if (native_context.exception != nullptr) {
@@ -303,7 +303,7 @@ Value VMInterpreter::Run(VMThread* thread) {
 }
 bool VMInterpreter::CallFunction(VMThread* thread, FunctionObject* function,
                                  int arg_count) {
-  const auto code = function->code_obj;
+  const auto code = function->code_obj();
 
   if (code->arg_count != arg_count) {
     // TODO: exception

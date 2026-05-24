@@ -22,19 +22,26 @@ struct NativeContext {
   Value* exception;
 };
 
-struct NativeFunctionObject : public Object {
+class NativeFunctionObject : public Object {
+ public:
   static constexpr auto kKind = ObjectKind::kNativeFunction;
 
   using HandlerFn = Value (*)(NativeContext* context,
                               std::span<const Value> args);
 
-  NativeFunctionObject(const int arg_count, const HandlerFn handler)
-      : Object(ObjectKind::kNativeFunction),
-        arg_count(arg_count),
-        handler(handler) {}
+  int arg_count() const { return arg_count_; }
+  HandlerFn handler() const { return handler_; }
 
-  int arg_count;  // -1, for entire stack
-  HandlerFn handler;
+ private:
+  explicit NativeFunctionObject(const int arg_count, const HandlerFn handler)
+      : Object(ObjectKind::kNativeFunction),
+        arg_count_(arg_count),
+        handler_(handler) {}
+
+  friend class GC;
+
+  int arg_count_;  // -1, for entire stack
+  HandlerFn handler_;
 };
 
 class Runtime {
@@ -56,8 +63,8 @@ class Runtime {
       uint32_t max_stack, uint32_t max_locals);
 
   // TODO: ZonePtr<...> them
-  void RegisterFunction(FunctionObject* function);
-  std::optional<FunctionObject*> LookupFunction(std::string_view name);
+  void RegisterFunction(GCPtr<FunctionObject> function);
+  std::optional<GCPtr<FunctionObject>> LookupFunction(std::string_view name);
 
   GC* gc() const { return gc_.get(); }
 
@@ -65,7 +72,7 @@ class Runtime {
   Zone* zone_;
   absl::flat_hash_map<ZoneStr, Value> builtin_globals_;
   std::vector<ZonePtr<CodeObject>> code_objects;
-  absl::flat_hash_map<ZoneStr, FunctionObject*> functions_;
+  absl::flat_hash_map<ZoneStr, GCPtr<FunctionObject>> functions_;
   std::unique_ptr<GC> gc_;
 };
 

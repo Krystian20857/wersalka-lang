@@ -36,6 +36,10 @@ func template_test(a, b) {
   return "a = {a}, b = {b}, a + b = {a + b}";
 }
 
+func my_lambda(a) {
+  print(a);
+}
+
 func main() {
   # print(params_test(1, 2, 3));
   # while_test(2, 10);
@@ -66,9 +70,9 @@ func main() {
       const auto object = codegen.CreateCodeObject(function);
       std::cout << absl::StrFormat("MAX_STACK %d\nMAX_LOCALS %d\n",
                                    object->max_stack, object->max_locals);
-      const auto func_object = runtime.GetPermanentZone()->New<FunctionObject>(
+      const auto func_obj = runtime.gc()->New<FunctionObject>(
           runtime.GetPermanentZone()->InternString(function->name), object);
-      runtime.RegisterFunction(func_object);
+      runtime.RegisterFunction(func_obj);
     }
   }
 

@@ -39,10 +39,10 @@ class GC {
   virtual void Collect(VMThread* thread) = 0;
 
   template <typename T, typename... Args>
-  GCPtr<T> New(const std::size_t size = sizeof(T), Args&&... args) {
-    auto* ptr = Alloc(size, alignof(T));
-    return new (ptr) T(std::forward<Args>(args)...);
-  }
+  GCPtr<T> NewSized(std::size_t size, Args&&... args);
+
+  template <typename T, typename... Args>
+  GCPtr<T> New(Args&&... args);
 };
 
 class MarkSweepGC : public GC {
@@ -55,6 +55,16 @@ class MarkSweepGC : public GC {
     HeapObject* next;
   };
 };
+
+template <typename T, typename... Args>
+GCPtr<T> GC::NewSized(const std::size_t size, Args&&... args) {
+  auto* ptr = Alloc(size, alignof(T));
+  return new (ptr) T(std::forward<Args>(args)...);
+}
+template <typename T, typename... Args>
+GCPtr<T> GC::New(Args&&... args) {
+  return NewSized<T>(sizeof(T), args...);
+}
 
 }  // namespace runtime
 }  // namespace lang

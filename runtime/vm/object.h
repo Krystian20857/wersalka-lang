@@ -26,20 +26,21 @@ class Object {
  public:
   static constexpr int kHeaderSize = sizeof(ObjectKind);
 
-  explicit Object(const ObjectKind kind) : kind_(kind) {}
-
   ObjectKind kind() const { return kind_; }
+
+ protected:
+  explicit Object(const ObjectKind kind) : kind_(kind) {}
 
  private:
   ObjectKind kind_;
+
+  template <typename T, typename... Args>
+  friend GCPtr<T> GC::New(Args&&... args);
 };
 
 class StringObject : public Object {
  public:
   static constexpr int kCharsOffset = kHeaderSize + sizeof(int);
-
-  explicit StringObject(const int length)
-      : Object(ObjectKind::kString), length_(length), reserved_(0) {}
 
   int length() const { return length_; }
   char* GetChars() { return reinterpret_cast<char*>(this) + kCharsOffset; }
@@ -53,6 +54,11 @@ class StringObject : public Object {
                                     GCPtr<StringObject> right);
 
  private:
+  explicit StringObject(const int length)
+      : Object(ObjectKind::kString), length_(length), reserved_(0) {}
+
+  friend class GC;
+
   int length_;
   int reserved_;
 };
