@@ -29,8 +29,8 @@ void VMThread::PushStack(Value value) {
 }
 void VMThread::SetStackTop(Value* value) { stack_top_ = value; }
 Value* VMThread::GetStackTop() const { return stack_top_; }
-VMFrame* VMThread::PushFrame(FunctionObject* function, CodeObject* code,
-                             Value* locals) {
+VMFrame* VMThread::PushFrame(const GCPtr<FunctionObject> function,
+                             CodeObject* code, Value* locals) {
   if (frame_count_ >= kMaxFrameSize) {
     // TODO: Exception, stack overflow
     SetPendingException(Value::CreateNull());
@@ -58,7 +58,8 @@ void VMThread::Unwind(Value exception) {
   SetThreadState(VMThreadState::kError);
 }
 
-Value VMInterpreter::Execute(VMThread* thread, FunctionObject* entry) {
+Value VMInterpreter::Execute(VMThread* thread,
+                             const GCPtr<FunctionObject> entry) {
   thread->SetThreadState(VMThreadState::kRunning);
 
   // callee
@@ -120,12 +121,18 @@ Value VMInterpreter::Run(VMThread* thread) {
         break;
       }
       case Opcode::kJmp: {
+        if (instr.c2 < frame->pc) {
+          runtime_->gc()->Collect(thread);
+        }
         frame->pc = instr.c2;
         break;
       }
       case Opcode::kJmpIfTrue: {
         const auto value = thread->PopStack();
         if (VMIntrinsics::IsTruthful(value)) {
+          if (instr.c2 < frame->pc) {
+            runtime_->gc()->Collect(thread);
+          }
           frame->pc = instr.c2;
         } else {
           frame->pc++;
@@ -135,6 +142,9 @@ Value VMInterpreter::Run(VMThread* thread) {
       case Opcode::kJmpIfFalse: {
         const auto value = thread->PopStack();
         if (!VMIntrinsics::IsTruthful(value)) {
+          if (instr.c2 < frame->pc) {
+            runtime_->gc()->Collect(thread);
+          }
           frame->pc = instr.c2;
         } else {
           frame->pc++;
@@ -233,6 +243,8 @@ Value VMInterpreter::Run(VMThread* thread) {
         break;
       }
       case Opcode::kInvoke: {
+        runtime_->gc()->Collect(thread);
+
         const int arg_count = instr.c1;
         const auto callee = *(thread->GetStackTop() - arg_count - 1);
 
@@ -301,8 +313,9 @@ Value VMInterpreter::Run(VMThread* thread) {
   // TODO: wrap exception in error type
   return thread->GetCurrentException();
 }
-bool VMInterpreter::CallFunction(VMThread* thread, FunctionObject* function,
-                                 int arg_count) {
+bool VMInterpreter::CallFunction(VMThread* thread,
+                                 const GCPtr<FunctionObject> function,
+                                 const int arg_count) {
   const auto code = function->code_obj();
 
   if (code->arg_count != arg_count) {

@@ -5,8 +5,6 @@
 #ifndef WERSALKALANG_VALUE_H
 #define WERSALKALANG_VALUE_H
 
-#include <cstdint>
-
 #include "absl/log/check.h"
 #include "runtime/vm/object.h"
 
@@ -86,23 +84,13 @@ class Value {
            bits_ == (ValueTags::kSpecialTag | ValueTags::kFalsePayload);
   }
 
-  Object* GetObject() const {
+  GCPtr<Object> GetObject() const {
     CHECK(IsObject());
     return reinterpret_cast<Object*>(bits_ & ~(ValueTags::kTagMask));
   }
 
   template <typename T>
-  std::optional<T*> GetCheckedObject() const {
-    static_assert(std::is_base_of_v<Object, T> || std::is_same_v<Object, T>,
-                  "T must derive from `Object`");
-    CHECK(IsObject());
-    Object* object = GetObject();
-    if (object->kind() == T::kKind) {
-      return static_cast<T*>(object);
-    } else {
-      return std::nullopt;
-    }
-  }
+  std::optional<GCPtr<T>> GetCheckedObject() const;
 
  private:
   constexpr explicit Value(const uint64_t bits) : bits_(bits) {}
@@ -110,8 +98,37 @@ class Value {
   Raw bits_;
 };
 
+template <typename T>
+std::optional<GCPtr<T>> Value::GetCheckedObject() const {
+  static_assert(std::is_base_of_v<Object, T> || std::is_same_v<Object, T>,
+                "T must derive from `Object`");
+  CHECK(IsObject());
+  Object* object = GetObject();
+  if (object->kind() == T::kKind) {
+    return static_cast<GCPtr<T>>(object);
+  } else {
+    return std::nullopt;
+  }
+}
+
 static_assert(sizeof(Value) == 8);
 static_assert(std::is_trivially_copyable_v<Value>);
+
+template <typename T>
+class Handle {
+public:
+  friend class GC;
+  friend class GCVisitor;
+  friend class Value;
+
+  GCPtr<T> GetPtr() const { return value_->GetObject(); }
+  void SetPtr(const Value value) const { *value_ = value; }
+
+private:
+  explicit Handle(Value* value) : value_(value) {}
+
+  Value* value_;
+};
 
 }  // namespace runtime
 }  // namespace lang

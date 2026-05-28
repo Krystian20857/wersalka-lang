@@ -6,8 +6,9 @@
 #define WERSALKALANG_RUNTIME_H
 
 #include "absl/container/flat_hash_map.h"
+#include "runtime/gc/gc.h"
+#include "runtime/gc/mark_sweep.h"
 #include "runtime/vm/code_object.h"
-#include "runtime/vm/gc.h"
 #include "runtime/vm/value.h"
 #include "runtime/zone.h"
 
@@ -46,6 +47,8 @@ class NativeFunctionObject : public Object {
 
 class Runtime {
  public:
+  friend class GCVisitor;
+
   explicit Runtime(Zone* zone)
       : zone_(zone), gc_(std::make_unique<MarkSweepGC>()) {}
 

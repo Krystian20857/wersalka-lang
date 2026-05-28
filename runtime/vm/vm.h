@@ -21,14 +21,15 @@ enum class VMThreadState { kRunning, kNative, kError, kReturned };
 // call conv:
 //  [callee] [arg0]...[argX] [local0]...[localX] [operand0]...[operandX]
 struct VMFrame {
-  VMFrame(CodeObject* code_obj, FunctionObject* func_obj, Value* locals)
+  VMFrame(CodeObject* code_obj, const GCPtr<FunctionObject> func_obj,
+          Value* locals)
       : code_obj(code_obj), func_obj(func_obj), pc(0), locals(locals) {}
 
   // keep VMThread::frames_ happy
   VMFrame() : VMFrame(nullptr, nullptr, nullptr) {}
 
   CodeObject* code_obj;
-  FunctionObject* func_obj;
+  GCPtr<FunctionObject> func_obj;
   uint32_t pc;
   Value* locals;
 };
@@ -37,6 +38,7 @@ struct VMFrame {
 class VMThread {
  public:
   friend class VMInterpreter;
+  friend class GCVisitor;
 
   static constexpr auto kMaxStackSize = 1024 * 1024;
   static constexpr auto kMaxFrameSize = 4096;
@@ -56,7 +58,7 @@ class VMThread {
   void SetStackTop(Value* value);
   Value* GetStackTop() const;
 
-  VMFrame* PushFrame(FunctionObject* function, CodeObject* code, Value* locals);
+  VMFrame* PushFrame(GCPtr<FunctionObject> function, CodeObject* code, Value* locals);
   VMFrame PopFrame();
   VMFrame* CurrentFrame();
 
@@ -83,11 +85,11 @@ class VMInterpreter {
  public:
   explicit VMInterpreter(Runtime* runtime) : runtime_(runtime) {}
 
-  Value Execute(VMThread* thread, FunctionObject* entry);
+  Value Execute(VMThread* thread, GCPtr<FunctionObject> entry);
 
  private:
   Value Run(VMThread* thread);
-  bool CallFunction(VMThread* thread, FunctionObject* function, int arg_count);
+  bool CallFunction(VMThread* thread, GCPtr<FunctionObject> function, int arg_count);
 
   Value MaterializeConstant(ConstantDesc desc) const;
 

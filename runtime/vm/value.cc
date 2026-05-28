@@ -3,3 +3,9 @@
 //
 
 #include "value.h"
+namespace wersalka {
+namespace lang {
+namespace runtime {
+}  // namespace runtime
+}  // namespace lang
+}  // namespace wersalka

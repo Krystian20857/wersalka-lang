@@ -4,7 +4,6 @@
 
 #include "object.h"
 
-#include <algorithm>
 #include <memory>
 
 namespace wersalka {

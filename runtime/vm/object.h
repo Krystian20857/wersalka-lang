@@ -7,7 +7,7 @@
 
 #include <string_view>
 
-#include "runtime/vm/gc.h"
+#include "runtime/gc/gc.h"
 
 namespace wersalka {
 namespace lang {

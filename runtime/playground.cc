@@ -40,10 +40,25 @@ func my_lambda(a) {
   print(a);
 }
 
+func test2 () {
+  return 1;
+}
+
+func test() {
+ global_var = test2;
+}
+
 func main() {
   # print(params_test(1, 2, 3));
   # while_test(2, 10);
-  print(template_test(1337, 2137));
+  # print(template_test(1337, 2137));
+  test();
+  print(global_var());
+
+  while (true) {
+    # var test = "1337 {1337}";
+    var test = "test {1}";
+  }
 }
 )";
   Zone zone;

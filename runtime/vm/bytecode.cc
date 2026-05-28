@@ -189,7 +189,7 @@ std::string BytecodeDisassembler::FormatConstant(
     case ConstantDesc::Kind::kFloat:
       return std::to_string(constant.float_v);
     case ConstantDesc::Kind::kBool:
-      return std::to_string(constant.bool_v);
+      return constant.bool_v ? "true" : "false";
     case ConstantDesc::Kind::kNull:
       return "null";
     case ConstantDesc::Kind::kString:

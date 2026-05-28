@@ -322,7 +322,7 @@ void CodeGenerator::CompileAssignExpr(Zone& zone, BytecodeBuilder& builder,
       op = Opcode::kOr;
       break;
     case ASTAssignExpr::Operator::kXorAssign:
-      op = Opcode::kOr;
+      op = Opcode::kXor;
       break;
     case ASTAssignExpr::Operator::kShlAssign:
       op = Opcode::kShl;
@@ -348,6 +348,12 @@ void CodeGenerator::CompileTemplateExpr(Zone& zone, BytecodeBuilder& builder,
     return;
   }
 
+  if (expr->segments.size() == 1 &&
+      expr->segments[0].kind == ASTTemplateExpr::Segment::kPart) {
+    builder.EmitPushConst(ConstantDesc::CreateString(expr->segments[0].str_v));
+    return;
+  }
+
   const auto segments = expr->segments;
   auto push_segments = [&](const ASTTemplateExpr::Segment& segment) {
     switch (segment.kind) {
@@ -362,15 +368,17 @@ void CodeGenerator::CompileTemplateExpr(Zone& zone, BytecodeBuilder& builder,
     }
   };
 
+  // TODO: make vm intrinsic from this
   const auto acc = locals.DefineSyntheticVar();
   builder.EmitPushConst(ConstantDesc::CreateString(""));
   builder.EmitVarLocal(Opcode::kStoreLocal, acc);
-  for (auto n = 0; n < segments.size(); ++n) {
+  for (const auto& segment : segments) {
     builder.EmitVarLocal(Opcode::kLoadLocal, acc);
-    push_segments(segments[n]);
+    push_segments(segment);
     builder.Emit(Opcode::kAdd);
     builder.EmitVarLocal(Opcode::kStoreLocal, acc);
   }
+  builder.EmitVarLocal(Opcode::kLoadLocal, acc);
 }
 void CodeGenerator::CompileLValue(Zone& zone, BytecodeBuilder& builder,
                                   LocalsTable& locals,

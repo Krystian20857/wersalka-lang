@@ -13,23 +13,16 @@ namespace lang {
 namespace runtime {
 
 class VMThread;
+class Runtime;
 class GC;
+class Value;
+class Object;
+
+template <typename T>
+class Handle;  // ugly af
 
 template <typename T>
 using GCPtr = T*;
-
-template <typename T>
-class GCHandle {
- public:
-  friend class GC;
-
-  explicit GCHandle(const GCPtr<T> ptr) : ptr_(ptr) {}
-
-  GCPtr<T> ptr() const { return ptr_; }
-
- private:
-  GCPtr<T> ptr_;
-};
 
 class GC {
  public:
@@ -45,15 +38,15 @@ class GC {
   GCPtr<T> New(Args&&... args);
 };
 
-class MarkSweepGC : public GC {
+class GCVisitor {
  public:
-  void* Alloc(std::size_t size, std::size_t align) override;
-  void Collect(VMThread* thread) override;
+  virtual ~GCVisitor() = default;
 
- private:
-  struct HeapObject {
-    HeapObject* next;
-  };
+  virtual bool Visit(Handle<Object> value) = 0;
+
+  void WalkObject(Value* value);
+  void WalkRoots(VMThread* thread);
+  void WalkRoots(Runtime* runtime);
 };
 
 template <typename T, typename... Args>
