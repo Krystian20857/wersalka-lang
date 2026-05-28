@@ -38,6 +38,9 @@ void GCVisitor::WalkObject(Value* value) {
   }
 }
 void GCVisitor::WalkRoots(VMThread* thread) {
+  // TODO: use interpreter stackmap
+  //  eventually perform liveness analysis while compilation
+
   // frame walk
   for (auto n = 1; n <= thread->frame_count_; n++) {
     const auto& frame = thread->frames_[n];
