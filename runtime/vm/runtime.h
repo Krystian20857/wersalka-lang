@@ -75,7 +75,7 @@ class Runtime {
   Zone* zone_;
   absl::flat_hash_map<ZoneStr, Value> builtin_globals_;
   std::vector<ZonePtr<CodeObject>> code_objects;
-  absl::flat_hash_map<ZoneStr, GCPtr<FunctionObject>> functions_;
+  absl::flat_hash_map<ZoneStr, Value> functions_;
   std::unique_ptr<GC> gc_;
 };
 

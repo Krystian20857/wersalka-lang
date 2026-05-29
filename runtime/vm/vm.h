@@ -5,6 +5,7 @@
 #ifndef WERSALKALANG_VM_H
 #define WERSALKALANG_VM_H
 
+#include "runtime/gc/handle.h"
 #include "runtime/vm/code_object.h"
 #include "runtime/vm/runtime.h"
 #include "runtime/vm/value.h"
@@ -21,34 +22,35 @@ enum class VMThreadState { kRunning, kNative, kError, kReturned };
 // call conv:
 //  [callee] [arg0]...[argX] [local0]...[localX] [operand0]...[operandX]
 struct VMFrame {
-  VMFrame(CodeObject* code_obj, const GCPtr<FunctionObject> func_obj,
-          Value* locals)
+  VMFrame(CodeObject* code_obj, Value func_obj, Value* locals)
       : code_obj(code_obj), func_obj(func_obj), pc(0), locals(locals) {}
 
   // keep VMThread::frames_ happy
-  VMFrame() : VMFrame(nullptr, nullptr, nullptr) {}
+  VMFrame() : VMFrame(nullptr, Value::CreateNull(), nullptr) {}
 
   CodeObject* code_obj;
-  GCPtr<FunctionObject> func_obj;
+  Value func_obj;
   uint32_t pc;
   Value* locals;
 };
 
-// TODO: handle tracking for moving GC
 class VMThread {
  public:
   friend class VMInterpreter;
   friend class GCVisitor;
+  friend class HandleScope;
 
   static constexpr auto kMaxStackSize = 1024 * 1024;
   static constexpr auto kMaxFrameSize = 4096;
   static constexpr auto kNativeArgumentBufferSize = 64;
+  static constexpr auto kMaxHandles = 256;
 
   explicit VMThread(Runtime* runtime)
       : runtime_(runtime),
         stack_top_(stack_.data()),
         frame_count_(0),
-        thread_state_(VMThreadState::kRunning) {}
+        thread_state_(VMThreadState::kRunning),
+        handle_top_(handle_stack_.data()) {}
 
   Runtime* runtime() const { return runtime_; }
 
@@ -58,7 +60,8 @@ class VMThread {
   void SetStackTop(Value* value);
   Value* GetStackTop() const;
 
-  VMFrame* PushFrame(GCPtr<FunctionObject> function, CodeObject* code, Value* locals);
+  VMFrame* PushFrame(GCPtr<FunctionObject> function, CodeObject* code,
+                     Value* locals);
   VMFrame PopFrame();
   VMFrame* CurrentFrame();
 
@@ -79,7 +82,17 @@ class VMThread {
   Value pending_exception_;
   absl::flat_hash_map<ZoneStr, Value> globals_;
   std::array<Value, kNativeArgumentBufferSize> native_args_buffer_;
+  std::array<Value, kMaxHandles> handle_stack_;
+  Value* handle_top_;
 };
+
+template <typename T>
+Local<T> HandleScope::Alloc(GCPtr<T> ptr) {
+  CHECK_LT(thread_->handle_top_,
+           thread_->handle_stack_.data() + VMThread::kMaxHandles);
+  *thread_->handle_top_ = Value::CreateObject(ptr);
+  return Local<T>(thread_->handle_top_++);
+}
 
 class VMInterpreter {
  public:
@@ -89,7 +102,8 @@ class VMInterpreter {
 
  private:
   Value Run(VMThread* thread);
-  bool CallFunction(VMThread* thread, GCPtr<FunctionObject> function, int arg_count);
+  bool CallFunction(VMThread* thread, GCPtr<FunctionObject> function,
+                    int arg_count);
 
   Value MaterializeConstant(ConstantDesc desc) const;
 

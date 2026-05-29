@@ -32,11 +32,12 @@ ZonePtr<CodeObject> Runtime::CreateCodeObject(
   return code_object;
 }
 void Runtime::RegisterFunction(FunctionObject* function) {
-  functions_[zone_->InternString(function->name())] = function;
+  functions_[zone_->InternString(function->name())] =
+      Value::CreateObject(function);
 }
 std::optional<FunctionObject*> Runtime::LookupFunction(std::string_view name) {
   if (const auto fn = functions_.find(name); fn != functions_.end()) {
-    return fn->second;
+    return static_cast<FunctionObject*>(fn->second.GetObject());
   } else {
     return std::nullopt;
   }

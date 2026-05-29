@@ -38,7 +38,7 @@ VMFrame* VMThread::PushFrame(const GCPtr<FunctionObject> function,
   }
   const auto frame = &frames_[++frame_count_];
   frame->code_obj = code;
-  frame->func_obj = function;
+  frame->func_obj = Value::CreateObject(function);
   frame->locals = locals;
   frame->pc = 0;
   return frame;
@@ -406,8 +406,9 @@ Value VMIntrinsics::Add(VMThread* thread, Value left, Value right) {
       (left.IsObject() && left.GetObject()->kind() == ObjectKind::kString) ||
       (right.IsObject() && right.GetObject()->kind() == ObjectKind::kString);
   if (do_concat) {
-    const auto left_string = CoerceToString(thread, left);
-    const auto right_string = CoerceToString(thread, right);
+    HandleScope scope(thread);
+    const auto left_string = scope.Alloc(CoerceToString(thread, left));
+    const auto right_string = scope.Alloc(CoerceToString(thread, right));
     return Value::CreateObject(StringObject::Concat(thread->runtime()->gc(),
                                                     left_string, right_string));
   }

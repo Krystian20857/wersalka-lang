@@ -43,12 +43,8 @@ void GCVisitor::WalkRoots(VMThread* thread) {
 
   // frame walk
   for (auto n = 1; n <= thread->frame_count_; n++) {
-    const auto& frame = thread->frames_[n];
-
-    // TODO: should frame keep function `Value` reference?,
-    //   so I can implement moving collector later
-    auto value_stub = Value::CreateObject<FunctionObject>(frame.func_obj);
-    Visit(Handle<Object>(&value_stub));
+    auto& frame = thread->frames_[n];
+    WalkObject(&frame.func_obj);
 
     // TODO: is it correct?
     //  I guess for fully correct and performant stack walk I would have to
@@ -64,15 +60,17 @@ void GCVisitor::WalkRoots(VMThread* thread) {
   for (auto& [name, global] : thread->globals_) {
     WalkObject(&global);
   }
+
+  for (auto* v = thread->handle_stack_.data(); v < thread->handle_top_; ++v) {
+    WalkObject(v);
+  }
 }
 void GCVisitor::WalkRoots(Runtime* runtime) {
   for (auto& [name, value] : runtime->builtin_globals_) {
     WalkObject(&value);
   }
-  for (auto [name, value] : runtime->functions_) {
-    // idk is that correct
-    auto value_stub = Value::CreateObject<FunctionObject>(value);
-    Visit(Handle<Object>(&value_stub));
+  for (auto& [name, value] : runtime->functions_) {
+    WalkObject(&value);
   }
 }
 }  // namespace runtime
