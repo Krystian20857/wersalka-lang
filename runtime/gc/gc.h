@@ -6,6 +6,7 @@
 #define WERSALKALANG_GC_H
 
 #include <cstddef>
+#include <type_traits>
 #include <utility>
 
 namespace wersalka {
@@ -51,6 +52,8 @@ class GCVisitor {
 
 template <typename T, typename... Args>
 GCPtr<T> GC::NewSized(const std::size_t size, Args&&... args) {
+  static_assert(std::is_trivially_destructible_v<T>,
+                "GC objects have to be trivially destructible");
   auto* ptr = Alloc(size, alignof(T));
   return new (ptr) T(std::forward<Args>(args)...);
 }

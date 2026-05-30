@@ -90,7 +90,10 @@ class Value {
   }
 
   template <typename T>
-  std::optional<GCPtr<T>> GetCheckedObject() const;
+  std::optional<GCPtr<T>> GetObject() const;
+
+  template <typename T>
+  GCPtr<T> GetObjectUnchecked() const;
 
  private:
   constexpr explicit Value(const uint64_t bits) : bits_(bits) {}
@@ -99,7 +102,7 @@ class Value {
 };
 
 template <typename T>
-std::optional<GCPtr<T>> Value::GetCheckedObject() const {
+std::optional<GCPtr<T>> Value::GetObject() const {
   static_assert(std::is_base_of_v<Object, T> || std::is_same_v<Object, T>,
                 "T must derive from `Object`");
   CHECK(IsObject());
@@ -110,13 +113,22 @@ std::optional<GCPtr<T>> Value::GetCheckedObject() const {
     return std::nullopt;
   }
 }
+template <typename T>
+GCPtr<T> Value::GetObjectUnchecked() const {
+  static_assert(std::is_base_of_v<Object, T> || std::is_same_v<Object, T>,
+                "T must derive from `Object`");
+  CHECK(IsObject());
+  Object* object = GetObject();
+  CHECK(object->kind() == T::kKind);
+  return static_cast<GCPtr<T>>(object);
+}
 
 static_assert(sizeof(Value) == 8);
 static_assert(std::is_trivially_copyable_v<Value>);
 
 template <typename T>
 class Handle {
-public:
+ public:
   friend class GC;
   friend class GCVisitor;
   friend class Value;
@@ -124,10 +136,33 @@ public:
   GCPtr<T> GetPtr() const { return value_->GetObject(); }
   void SetPtr(const Value value) const { *value_ = value; }
 
-private:
+ private:
   explicit Handle(Value* value) : value_(value) {}
 
   Value* value_;
+};
+
+// type-safe Object<...> value wrapper
+template <typename T>
+class Tagged {
+ public:
+  Tagged() : value_(Value::CreateNull()) {}
+  Tagged(Value value) : value_(value) {
+    CHECK((value.IsObject() && value.GetObject()->kind() == T::kKind) ||
+          value.IsNull());
+  }
+  // static_assert(std::is_same_v<Object, T> || std::is_base_of_v<Object, T>);
+  Tagged(T* ptr) : value_(Value::CreateObject(ptr)) {}
+
+  T* Get() const { return static_cast<T*>(value_.GetObject()); }
+  T* operator->() const { return Get(); }
+  T& operator*() const { return *Get(); }
+  bool IsNull() const { return value_.IsNull(); }
+
+  Value& AsValue() { return value_; }
+
+ private:
+  Value value_;
 };
 
 }  // namespace runtime

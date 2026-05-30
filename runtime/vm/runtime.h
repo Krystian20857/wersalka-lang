@@ -9,6 +9,7 @@
 #include "runtime/gc/gc.h"
 #include "runtime/gc/mark_sweep.h"
 #include "runtime/vm/code_object.h"
+#include "runtime/vm/object_impl.h"
 #include "runtime/vm/value.h"
 #include "runtime/zone.h"
 
@@ -77,6 +78,7 @@ class Runtime {
   std::vector<ZonePtr<CodeObject>> code_objects;
   absl::flat_hash_map<ZoneStr, Value> functions_;
   std::unique_ptr<GC> gc_;
+  ShapeTree shapes_;
 };
 
 }  // namespace runtime

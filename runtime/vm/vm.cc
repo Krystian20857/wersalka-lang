@@ -443,7 +443,7 @@ std::string VMIntrinsics::ToString(Runtime* runtime, Value value) {
         return absl::StrFormat("<function>@%d", IdentityHash(runtime, obj));
       case ObjectKind::kString: {
         const auto string_obj = static_cast<StringObject*>(obj);
-        return std::string(string_obj->GetChars(), string_obj->length());
+        return std::string(string_obj->GetCharsPtr(), string_obj->length());
       }
       default:
         return absl::StrFormat("<object>@%d", IdentityHash(runtime, obj));

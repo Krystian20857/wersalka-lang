@@ -34,24 +34,6 @@ struct CodeObject {
   uint32_t max_locals;
 };
 
-class FunctionObject : public Object {
- public:
-  static constexpr auto kKind = ObjectKind::kFunction;
-
-  ZoneStr name() const { return name_; }
-  ZonePtr<CodeObject> code_obj() const { return code_obj_; }
-
- private:
-  explicit FunctionObject(const ZoneStr name,
-                          const ZonePtr<CodeObject> code_obj)
-      : Object(ObjectKind::kFunction), name_(name), code_obj_(code_obj) {}
-
-  friend class GC;
-
-  ZoneStr name_;
-  ZonePtr<CodeObject> code_obj_;
-};
-
 }  // namespace runtime
 }  // namespace lang
 }  // namespace wersalka

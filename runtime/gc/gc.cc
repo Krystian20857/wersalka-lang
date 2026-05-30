@@ -6,6 +6,7 @@
 
 #include <cstdlib>
 
+#include "runtime/vm/object_impl.h"
 #include "runtime/vm/vm.h"
 
 namespace wersalka {
@@ -33,8 +34,23 @@ void GCVisitor::WalkObject(Value* value) {
       break;
     case ObjectKind::kShapedObject:
       break;
-    case ObjectKind::kObjectArray:
+    case ObjectKind::kArray:
       break;
+    case ObjectKind::kShape: {
+      const auto shape = static_cast<Shape*>(handle.GetPtr());
+      WalkObject(&shape->parent_.AsValue());
+      WalkObject(&shape->field_name_.AsValue());
+      WalkObject(&shape->transitions_.AsValue());
+      break;
+    }
+    case ObjectKind::kTransitionArray: {
+      const auto arr = static_cast<Shape::TransitionArray*>(handle.GetPtr());
+      for (auto& t : arr->Get()) {
+        WalkObject(&t.name.AsValue());
+        WalkObject(&t.child.AsValue());
+      }
+      break;
+    }
   }
 }
 void GCVisitor::WalkRoots(VMThread* thread) {

@@ -18,8 +18,10 @@ enum class ObjectKind {
   kNativeFunction,
   kBigInt,
   kString,
-  kShapedObject,
-  kObjectArray
+  kShape,
+  kTransitionArray,
+  kShapedObject,  // `instance` of shape
+  kArray
 };
 
 class Object {
@@ -36,31 +38,6 @@ class Object {
 
   template <typename T, typename... Args>
   friend GCPtr<T> GC::New(Args&&... args);
-};
-
-class StringObject : public Object {
- public:
-  static constexpr int kCharsOffset = kHeaderSize + sizeof(int);
-
-  int length() const { return length_; }
-  char* GetChars() { return reinterpret_cast<char*>(this) + kCharsOffset; }
-  char* Begin() { return GetChars(); }
-  char* End() { return GetChars() + length(); }
-
-  static int SizeFor(const int length) { return length + kCharsOffset; }
-
-  static GCPtr<StringObject> New(GC* gc, std::string_view str);
-  static GCPtr<StringObject> Concat(GC* gc, GCPtr<StringObject> left,
-                                    GCPtr<StringObject> right);
-
- private:
-  explicit StringObject(const int length)
-      : Object(ObjectKind::kString), length_(length), reserved_(0) {}
-
-  friend class GC;
-
-  int length_;
-  int reserved_;
 };
 
 }  // namespace runtime
