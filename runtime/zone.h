@@ -5,6 +5,8 @@
 #ifndef WERSALKALANG_ZONE_H
 #define WERSALKALANG_ZONE_H
 
+#include "absl/container/flat_hash_map.h"
+
 #include <memory_resource>
 
 #include "absl/log/check.h"
@@ -35,6 +37,7 @@ class Zone {
   static constexpr auto kInitialBufferSize = 64 * 1024;
 
   std::pmr::monotonic_buffer_resource buffer_{kInitialBufferSize};
+  absl::flat_hash_map<ZoneStr, ZoneStr> string_pool_;
 };
 
 // this looks a little bit too hacky,
