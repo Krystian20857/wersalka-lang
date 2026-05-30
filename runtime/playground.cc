@@ -17,49 +17,23 @@ namespace runtime {
 
 int Main() {
   const auto source = R"(
-func params_test(a, b, c) {
-  return a + b * c;
-}
 
-func while_test(n, c) {
-  while (n < c) {
-    if (n % 2 == 0) {
-      print(n * 10);
-    } else {
-      print(n);
-    }
+func main() {
+  var array = new [1, 2, 3, 4];
+
+  array[0] = 5;
+  print("length: {len(array)}");
+  print("array[0] = {array[0]}");
+  print("array[1] = {array[1]}");
+
+  print("=================");
+  var n = 0;
+  while (n < len(array)) {
+    print("array[{n}] = {array[n]}");
     n += 1;
   }
 }
 
-func template_test(a, b) {
-  return "a = {a}, b = {b}, a + b = {a + b}";
-}
-
-func my_lambda(a) {
-  print(a);
-}
-
-func test2 () {
-  return 1;
-}
-
-func test() {
- global_var = test2;
-}
-
-func main() {
-  # print(params_test(1, 2, 3));
-  # while_test(2, 10);
-  # print(template_test(1337, 2137));
-  test();
-  print(global_var());
-
-  while (true) {
-    # var test = "1337 {1337}";
-    var test = "test {1}";
-  }
-}
 )";
   Zone zone;
   DiagnosticReporter reporter;
@@ -77,6 +51,12 @@ func main() {
         std::cout << VMIntrinsics::ToString(context->runtime, arg0) << "\n";
         return Value::CreateNull();
       });
+  runtime.BindGlobalFunction("len", 1, [](const auto context, const auto args) {
+    const auto arg0 = args[0];
+    const auto length =
+        arg0.template GetObjectUnchecked<ArrayObject>()->length();
+    return Value::CreateInt(length);
+  });
   CodeGenerator codegen(&runtime, &reporter);
 
   if (Is<ASTCompileUnit>(ast)) {
@@ -89,6 +69,10 @@ func main() {
           runtime.GetPermanentZone()->InternString(function->name), object);
       runtime.RegisterFunction(func_obj);
     }
+  }
+
+  for (auto diagnostic : reporter.diagnostics()) {
+    std::cout << diagnostic.message << std::endl;
   }
 
   std::cout << std::endl;  // flush

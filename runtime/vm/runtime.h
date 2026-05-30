@@ -51,7 +51,7 @@ class Runtime {
   friend class GCVisitor;
 
   explicit Runtime(Zone* zone)
-      : zone_(zone), gc_(std::make_unique<MarkSweepGC>()) {}
+      : zone_(zone), gc_(std::make_unique<MarkSweepGC>()), shapes_(gc_.get()) {}
 
   Zone* GetPermanentZone() const { return zone_; }
 

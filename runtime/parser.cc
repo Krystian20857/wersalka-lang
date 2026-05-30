@@ -116,6 +116,8 @@ ZonePtr<ASTExpr> Parser::ParseExpr(const Precedence precedence) {
     }
     if (At(TokenKind::kOpenParen)) {
       left = ParseCallExpr(left);
+    } else if (At(TokenKind::kOpenBracket)) {
+      left = ParseArrayExpr(left);
     } else {
       const auto op = Next();
       left = ParseBinarExpr(left, op);
@@ -144,6 +146,10 @@ ZonePtr<ASTExpr> Parser::ParsePrimaryExpr() {
 
   if (At(TokenKind::kTemplateBegin)) {
     return ParseTemplateExpr();
+  }
+
+  if (At(TokenKind::kNew)) {
+    return ParseNewExpr();
   }
 
   ABSL_UNREACHABLE();
@@ -312,6 +318,22 @@ ZonePtr<ASTExpr> Parser::ParseCallExpr(ZonePtr<ASTExpr> left) {
   Expect(TokenKind::kCloseParen);
   return zone_->New<ASTCallExpr>(SpanEnd(mark), left, args);
 }
+ZonePtr<ASTExpr> Parser::ParseArrayExpr(ZonePtr<ASTExpr> left) {
+  const auto mark = SpanBegin();
+  Expect(TokenKind::kOpenBracket);
+  ZonePtrList<ASTExpr> args(zone_);
+  while (!AtEnd() && !At(TokenKind::kCloseParen)) {
+    const auto expr = ParseExpr(Precedence::kNone);
+    args.Add(zone_, expr);
+    if (At(TokenKind::kComma)) {
+      Next();
+    } else {
+      break;
+    }
+  }
+  Expect(TokenKind::kCloseBracket);
+  return zone_->New<ASTArrayExpr>(SpanEnd(mark), left, args);
+}
 ZonePtr<ASTExpr> Parser::ParseTemplateExpr() {
   const auto mark = SpanBegin();
   ZoneList<ASTTemplateExpr::Segment> segments(zone_);
@@ -335,6 +357,27 @@ ZonePtr<ASTExpr> Parser::ParseTemplateExpr() {
   }
   Expect(TokenKind::kTemplateEnd);
   return zone_->New<ASTTemplateExpr>(SpanEnd(mark), segments);
+}
+ZonePtr<ASTExpr> Parser::ParseNewExpr() {
+  const auto mark = SpanBegin();
+  Expect(TokenKind::kNew);
+
+  if (TryConsume(TokenKind::kOpenBracket)) {
+    ZonePtrList<ASTExpr> elements(zone_);
+    while (At(kExprBeginTokens)) {
+      const auto expr = ParseExpr(Precedence::kNone);
+      elements.Add(zone_, expr);
+      if (At(TokenKind::kComma)) {
+        Next();
+      } else {
+        break;
+      }
+    }
+    Expect(TokenKind::kCloseBracket);
+    return zone_->New<ASTNewArrayExpr>(SpanEnd(mark), elements);
+  }
+
+  ABSL_UNREACHABLE();
 }
 ZonePtr<ASTStmt> Parser::ParseStmt() {
   if (At(TokenKind::kVar)) {
@@ -517,6 +560,7 @@ Parser::Precedence Parser::GetPrecedence(TokenKind kind) {
     case TokenKind::kStarStar:
       return Precedence::kExponent;
     case TokenKind::kOpenParen:
+    case TokenKind::kOpenBracket:
       return Precedence::kPostfix;
 
     default:

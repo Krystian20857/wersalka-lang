@@ -78,7 +78,9 @@ class Parser final {
   ZonePtr<ASTExpr> ParseUnaryExpr();
   ZonePtr<ASTExpr> ParseMemberExpr();
   ZonePtr<ASTExpr> ParseCallExpr(ZonePtr<ASTExpr> left);
+  ZonePtr<ASTExpr> ParseArrayExpr(ZonePtr<ASTExpr> left);
   ZonePtr<ASTExpr> ParseTemplateExpr();
+  ZonePtr<ASTExpr> ParseNewExpr();
 
   ZonePtr<ASTStmt> ParseStmt();
   ZonePtr<ASTStmt> ParseBlockStmt();

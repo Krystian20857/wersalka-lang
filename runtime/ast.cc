@@ -242,6 +242,23 @@ static void DumpNode(const ASTNode* node, std::string& out, int depth) {
       }
       break;
     }
+    case ASTNode::Kind::kArrayExpr: {
+      const auto* n = static_cast<const ASTArrayExpr*>(node);
+      absl::StrAppendFormat(&out, "%sArrayExpr\n", indent);
+      DumpNode(n->target, out, depth + 1);
+      for (int i = 0; i < n->args.size(); i++) {
+        DumpNode(n->args[i], out, depth + 1);
+      }
+      break;
+    }
+    case ASTNode::Kind::kNewArrayExpr: {
+      const auto* n = static_cast<const ASTNewArrayExpr*>(node);
+      absl::StrAppendFormat(&out, "%sNewArrayExpr\n", indent);
+      for (int i = 0; i < n->elements_.size(); i++) {
+        DumpNode(n->elements_[i], out, depth + 1);
+      }
+      break;
+    }
     default:
       ABSL_UNREACHABLE();
   }

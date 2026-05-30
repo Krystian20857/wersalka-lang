@@ -48,7 +48,7 @@ enum class TokenKind {
   kTemplateSegment, kTemplateExprBegin, kTemplateExprEnd,
 
   // keywords
-  kVar, kIf, kWhile, kElse, kIn, kFor, kFunc, kReturn,
+  kVar, kIf, kWhile, kElse, kIn, kFor, kFunc, kReturn, kNew,
 
   kReserved
 };

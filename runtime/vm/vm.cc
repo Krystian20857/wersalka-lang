@@ -103,7 +103,7 @@ Value VMInterpreter::Run(VMThread* thread) {
       }
       case Opcode::kLoadGlobal: {
         const auto name = code_object->constants[instr.c2];
-        CHECK(name.kind == ConstantDesc::Kind::kString);
+        CHECK(name.kind == ConstantDesc::Kind::kString); // TODO: Exception
         if (auto global = thread->globals_.find(name.str_v);
             global != thread->globals_.end()) {
           thread->PushStack(global->second);
@@ -303,6 +303,72 @@ Value VMInterpreter::Run(VMThread* thread) {
         thread->SetStackTop(prev_locals - 1);  // discard callee + args
         thread->PushStack(value);
         thread->CurrentFrame()->pc++;  // advance past kInvoke in caller
+        break;
+      }
+      case Opcode::kNewArray: {
+        const auto size = thread->PopStack();
+        if (!size.IsInt()) {
+          // TODO: Exception, size must be int
+          thread->SetPendingException(Value::CreateNull());
+          break;
+        }
+        const auto array =
+            ArrayObject::New(thread->runtime()->gc(), size.GetIntValue());
+        thread->PushStack(Value::CreateObject(array));
+        frame->pc++;
+        break;
+      }
+      case Opcode::kStoreArray: {
+        const auto value = thread->PopStack();
+        const auto index_value = thread->PopStack();
+        const auto array = thread->PopStack();
+        const auto is_array =
+            array.IsObject() && array.GetObject()->kind() == ObjectKind::kArray;
+        if (!is_array) {
+          // TODO: Exception, must be array
+          thread->SetPendingException(Value::CreateNull());
+          break;
+        }
+        if (!index_value.IsInt()) {
+          // TODO: Exception, index must be int
+          thread->SetPendingException(Value::CreateNull());
+          break;
+        }
+        const auto index = index_value.GetIntValue();
+        const auto array_object = array.GetObjectUnchecked<ArrayObject>();
+        if (index >= array_object->length()) {
+          // TODO: Exception, out of bound
+          thread->SetPendingException(Value::CreateNull());
+          break;
+        }
+        array_object->GetElements()[index] = value;
+        frame->pc++;
+        break;
+      }
+      case Opcode::kLoadArray: {
+        const auto index_value = thread->PopStack();
+        const auto array = thread->PopStack();
+        const auto is_array =
+            array.IsObject() && array.GetObject()->kind() == ObjectKind::kArray;
+        if (!is_array) {
+          // TODO: Exception, must be array
+          thread->SetPendingException(Value::CreateNull());
+          break;
+        }
+        if (!index_value.IsInt()) {
+          // TODO: Exception, index must be int
+          thread->SetPendingException(Value::CreateNull());
+          break;
+        }
+        const auto index = index_value.GetIntValue();
+        const auto array_object = array.GetObjectUnchecked<ArrayObject>();
+        if (index >= array_object->length()) {
+          // TODO: Exception, out of bound
+          thread->SetPendingException(Value::CreateNull());
+          break;
+        }
+        thread->PushStack(array_object->GetElements()[index]);
+        frame->pc++;
         break;
       }
       case Opcode::kReserved: {

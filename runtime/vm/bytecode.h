@@ -34,6 +34,8 @@ enum class Opcode : uint8_t {
 
   kInvoke, kReturn,
 
+  kNewArray, kStoreArray, kLoadArray,
+
   kReserved
 };
 // clang-format on

@@ -161,7 +161,7 @@ void ZoneList<T>::Add(Zone* zone, Elem&& element) {
   if (capacity_ == size_ || elements_ == nullptr) {
     const auto new_capacity = std::max(capacity_, 1) * kGrowFactor;
     auto* new_elements = zone->NewBuffer<T>(new_capacity);
-    std::memcpy(new_elements, elements_, capacity_);
+    std::memcpy(new_elements, elements_, capacity_ * sizeof(T));
     capacity_ = new_capacity;
     elements_ = new_elements;
   }

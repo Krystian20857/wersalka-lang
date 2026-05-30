@@ -45,7 +45,9 @@ class ASTNode : public ZoneObject {
     kGroupExpr,
     kIdentExpr,
     kCallExpr,
+    kArrayExpr,
     kAssignExpr,
+    kNewArrayExpr
   };
 
   static constexpr auto kKind = Kind::kUnknown;
@@ -203,7 +205,8 @@ struct ASTTemplateExpr : ASTExpr {
     };
   };
 
-  explicit ASTTemplateExpr(const TextSpan span, const ZoneList<Segment> segments)
+  explicit ASTTemplateExpr(const TextSpan span,
+                           const ZoneList<Segment> segments)
       : ASTExpr(Kind::kTemplateExpr, span), segments(segments) {}
 
   ZoneList<Segment> segments;
@@ -320,7 +323,27 @@ struct ASTCallExpr : ASTExpr {
   ZonePtrList<ASTExpr> args;
 };
 
-// struct ASTTemplateExpr : ASTExpr {};
+// [...]
+struct ASTArrayExpr : ASTExpr {
+  static constexpr auto kKind = Kind::kArrayExpr;
+
+  explicit ASTArrayExpr(const TextSpan& span, const ZonePtr<ASTExpr>& target,
+                       const ZonePtrList<ASTExpr>& args)
+      : ASTExpr(Kind::kArrayExpr, span), target(target), args(args) {}
+  ZonePtr<ASTExpr> target;
+  ZonePtrList<ASTExpr> args;
+};
+
+// new [1, 2, ...]
+struct ASTNewArrayExpr : ASTExpr {
+  static constexpr auto kKind = Kind::kNewArrayExpr;
+
+  explicit ASTNewArrayExpr(const TextSpan& span,
+                           const ZonePtrList<ASTExpr> elements)
+      : ASTExpr(Kind::kNewArrayExpr, span), elements_(elements) {}
+
+  ZonePtrList<ASTExpr> elements_;
+};
 
 std::string_view GetBinaryOpMnemonic(ASTBinaryExpr::Operator op);
 std::string_view GetUnaryOpMnemonic(ASTUnaryExpr::Operator op);

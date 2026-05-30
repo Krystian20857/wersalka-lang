@@ -181,6 +181,23 @@ void CodeGenerator::CompileExpr(Zone& zone, BytecodeBuilder& builder,
       CompileTemplateExpr(zone, builder, locals, template_expr);
       break;
     }
+    case ASTNode::Kind::kNewArrayExpr: {
+      const auto new_expr = Cast<ASTNewArrayExpr>(expr);
+      builder.EmitPushConst(
+          ConstantDesc::CreateUInt(new_expr->elements_.size()));
+      builder.Emit(Opcode::kNewArray);
+      for (auto n = 0; n < new_expr->elements_.size(); n++) {
+        builder.Emit(Opcode::kDup);
+        builder.EmitPushConst(ConstantDesc::CreateUInt(n));
+        CompileExpr(zone, builder, locals, new_expr->elements_[n]);
+        builder.Emit(Opcode::kStoreArray);
+      }
+      break;
+    }
+    case ASTNode::Kind::kArrayExpr: {
+      CompileRValue(zone, builder, locals, expr);
+      break;
+    }
     default:
       ABSL_UNREACHABLE();
   }
@@ -392,6 +409,23 @@ void CodeGenerator::CompileLValue(Zone& zone, BytecodeBuilder& builder,
     } else {
       builder.EmitVarGlobal(Opcode::kStoreGlobal, ident_expr->ident);
     }
+  } else if (target->kind() == ASTNode::Kind::kArrayExpr) {
+    const auto array_expr = Cast<ASTArrayExpr>(target);
+    if (array_expr->args.size() != 1) {
+      reporter_->Report(
+          Diagnostic::Error(
+              "Only single dimensional array access operator is supported")
+              .withLabel(target->span(),
+                         "invalid operand count for `[...]` operator"));
+      return;
+    }
+    // TODO: add more stack operation opcodes?
+    builder.Emit(Opcode::kDup);
+    CompileExpr(zone, builder, locals, array_expr->target);
+    builder.Emit(Opcode::kSwap);
+    CompileExpr(zone, builder, locals, array_expr->args[0]);
+    builder.Emit(Opcode::kSwap);
+    builder.Emit(Opcode::kStoreArray);
   } else {
     reporter_->Report(
         Diagnostic::Error("LValue can be only "
@@ -409,6 +443,19 @@ void CodeGenerator::CompileRValue(Zone& zone, BytecodeBuilder& builder,
     } else {
       builder.EmitVarGlobal(Opcode::kLoadGlobal, ident_expr->ident);
     }
+  } else if (value->kind() == ASTNode::Kind::kArrayExpr) {
+    const auto array_expr = Cast<ASTArrayExpr>(value);
+    if (array_expr->args.size() != 1) {
+      reporter_->Report(
+          Diagnostic::Error(
+              "Only single dimensional array access operator is supported")
+              .withLabel(value->span(),
+                         "invalid operand count for `[...]` operator"));
+      return;
+    }
+    CompileExpr(zone, builder, locals, array_expr->target);
+    CompileExpr(zone, builder, locals, array_expr->args[0]);
+    builder.Emit(Opcode::kLoadArray);
   } else {
     reporter_->Report(
         Diagnostic::Error("RValue can be only "
