@@ -58,7 +58,7 @@ constexpr auto kOpcodes =
         DEFINE_OPCODE("INVOKE",        1, 1),
         DEFINE_OPCODE("RETURN",        1, 0),
 
-        DEFINE_OPCODE("NEW_ARRAY",     1, 0),
+        DEFINE_OPCODE("NEW_ARRAY",     1, 1),
         DEFINE_OPCODE("STORE_ARRAY",   3, 0),
         DEFINE_OPCODE("LOAD_ARRAY",    2, 1),
 
