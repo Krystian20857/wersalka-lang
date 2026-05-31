@@ -23,11 +23,12 @@ void* AllocSlab::Alloc(std::size_t size) {
   if (free_block_ != nullptr) {
     const auto free_block = free_block_;
     free_block_ = free_block->next;
+    // free_block points into the object data area; walk back to ObjectHeader
     const auto object_header = reinterpret_cast<MarkSweepGC::ObjectHeader*>(
-        reinterpret_cast<char*>(free_block) + sizeof(SlabObjectHeader));
+        reinterpret_cast<char*>(free_block) - sizeof(MarkSweepGC::ObjectHeader));
     object_header->marked = false;
     object_header->is_large_object = false;
-    return MarkSweepGC::PtrOfObjectFromHeader(object_header);
+    return free_block;
   }
 
   if (pages_ == nullptr || pages_->bump + block_size_ > pages_->capacity) {
@@ -48,6 +49,9 @@ void* AllocSlab::Alloc(std::size_t size) {
   return PtrOf(slab_header);
 }
 uint64_t AllocSlab::Sweep() {
+  // Rebuild the free list from scratch each sweep so blocks freed in a prior
+  // sweep are naturally re-added without corrupting their next pointers.
+  free_block_ = nullptr;
   uint64_t alive_bytes = 0;
   auto current_page = pages_;
   const auto first_offset =
@@ -59,7 +63,10 @@ uint64_t AllocSlab::Sweep() {
       const auto obj_header_ptr = reinterpret_cast<MarkSweepGC::ObjectHeader*>(
           reinterpret_cast<char*>(slab_header_ptr) + sizeof(SlabObjectHeader));
       if (!obj_header_ptr->marked) {
-        const auto free_block = reinterpret_cast<FreeBlock*>(slab_header_ptr);
+        // FreeBlock lives at the object data start (right after ObjectHeader),
+        // so FreeBlock::next never overlaps ObjectHeader::marked.
+        const auto free_block = reinterpret_cast<FreeBlock*>(
+            reinterpret_cast<char*>(obj_header_ptr) + sizeof(MarkSweepGC::ObjectHeader));
         free_block->next = free_block_;
         free_block_ = free_block;
       } else {
@@ -84,8 +91,11 @@ std::size_t AllocSlab::SizeOf(const std::size_t object_size) {
          object_size;
 }
 void* AllocSlab::PtrOf(SlabObjectHeader* header) {
-  return reinterpret_cast<char*>(header) + sizeof(SlabObjectHeader) +
-         sizeof(MarkSweepGC::ObjectHeader);
+  const auto obj_header = reinterpret_cast<MarkSweepGC::ObjectHeader*>(
+      reinterpret_cast<char*>(header) + sizeof(SlabObjectHeader));
+  obj_header->marked = false;
+  obj_header->is_large_object = false;
+  return reinterpret_cast<char*>(obj_header) + sizeof(MarkSweepGC::ObjectHeader);
 }
 void* MarkSweepGC::Alloc(const std::size_t size, const std::size_t align) {
   if (size > kSlabSizes[kSlabSizes.size() - 1]) {
@@ -123,6 +133,12 @@ void MarkSweepGC::Collect(VMThread* thread) {
     allocated_bytes_ = alive_bytes_;
     collect_requested_ = false;
   }
+}
+GCStats MarkSweepGC::GetStats() const {
+  return GCStats {
+    .allocated_bytes = this->allocated_bytes_,
+    .alive_bytes = this->alive_bytes_
+  };
 }
 
 void MarkSweepGC::CollectNow(VMThread* thread) {

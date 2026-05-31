@@ -19,19 +19,20 @@ int Main() {
   const auto source = R"(
 
 func main() {
-  var array = new [1, 2, 3, 4];
+  var bytes_to_mb = 1024 * 1024;
+  while (true) {
+    var obj = new {};
+    obj.x = 1;
+    obj.y = 2;
+    obj.z = 3;
 
-  array[0] = 5;
-  print("length: {len(array)}");
-  print("array[0] = {array[0]}");
-  print("array[1] = {array[1]}");
+    var stats = __gc_stats();
 
-  print("=================");
-  var n = 0;
-  while (n < len(array)) {
-    print("array[{n}] = {array[n]}");
-    n += 1;
+    print("""Allocated {cast(stats.allocated_bytes, "float") / bytes_to_mb}mb
+    Alive {cast(stats.alive_bytes, "float") / bytes_to_mb}mb""");
   }
+
+  print("x, y, z = {obj.x}, {obj.y}, {obj.z}");
 }
 
 )";
@@ -45,18 +46,13 @@ func main() {
   std::cout << DumpAST(ast);
 
   Runtime runtime(&zone);
+  runtime.RegisterBuiltIns();
   runtime.BindGlobalFunction(
       "print", 1, [](const auto context, const auto args) {
         const auto arg0 = args[0];
         std::cout << VMIntrinsics::ToString(context->runtime, arg0) << "\n";
         return Value::CreateNull();
       });
-  runtime.BindGlobalFunction("len", 1, [](const auto context, const auto args) {
-    const auto arg0 = args[0];
-    const auto length =
-        arg0.template GetObjectUnchecked<ArrayObject>()->length();
-    return Value::CreateInt(length);
-  });
   CodeGenerator codegen(&runtime, &reporter);
 
   if (Is<ASTCompileUnit>(ast)) {
@@ -73,6 +69,11 @@ func main() {
 
   for (auto diagnostic : reporter.diagnostics()) {
     std::cout << diagnostic.message << std::endl;
+    for (auto label : diagnostic.labels) {
+      std::cout << absl::StrFormat("\t[%d:%d] %s\n", label.span.offset,
+                                   label.span.offset + label.span.length,
+                                   label.message);
+    }
   }
 
   std::cout << std::endl;  // flush

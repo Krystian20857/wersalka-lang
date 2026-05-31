@@ -57,9 +57,14 @@ constexpr auto kOpcodes =
 
         DEFINE_OPCODE("INVOKE",        1, 1),
         DEFINE_OPCODE("RETURN",        1, 0),
+
         DEFINE_OPCODE("NEW_ARRAY",     1, 0),
         DEFINE_OPCODE("STORE_ARRAY",   3, 0),
         DEFINE_OPCODE("LOAD_ARRAY",    2, 1),
+
+        DEFINE_OPCODE("NEW_OBJECT",    0, 1),
+        DEFINE_OPCODE("SET_FIELD",     3, 0),
+        DEFINE_OPCODE("GET_FIELD",     2, 1),
     };
 // clang-format on
 

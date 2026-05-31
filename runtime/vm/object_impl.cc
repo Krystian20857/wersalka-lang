@@ -35,6 +35,15 @@ GCPtr<ArrayObject> ArrayObject::New(GC* gc, int size) {
       sizeof(ArrayObject) + size * sizeof(Value), size);
   return array_object;
 }
+GCPtr<ArrayObject> ArrayObject::NewStringArray(
+    GC* gc, const std::span<const std::string_view> strings) {
+  const auto array = New(gc, strings.size());
+  for (auto n = 0; n < strings.size(); n++) {
+    array->GetElements()[n] =
+        Value::CreateObject(StringObject::New(gc, strings[n]));
+  }
+  return array;
+}
 
 GCPtr<Shape> Shape::New(GC* gc, const Tagged<Shape> parent,
                         const Tagged<StringObject> field_name,
@@ -49,16 +58,16 @@ ShapeTree::ShapeTree(GC* gc) : gc_(gc) {
   root_ = Shape::New(gc, Value::CreateNull(), StringObject::New(gc, ""),
                      -1 /* first field shall have slot 0 */);
 }
-GCPtr<Shape> ShapeTree::ShapeOf(ArrayObject field_names) const {
+GCPtr<Shape> ShapeTree::ShapeOf(Tagged<ArrayObject> field_names) const {
   // TODO: safe tagged heap array
-  for (auto value : field_names.GetElements()) {
+  for (auto value : field_names->GetElements()) {
     CHECK(value.IsObject() && value.GetObject()->kind() == ObjectKind::kString);
   }
-  if (field_names.length() == 0) {
+  if (field_names->length() == 0) {
     return root_.Get();
   }
   GCPtr<Shape> shape = root_.Get();
-  for (const auto element : field_names.GetElements()) {
+  for (const auto element : field_names->GetElements()) {
     shape = TransitionOf(Tagged(shape), element);
   }
   return shape;
@@ -93,7 +102,7 @@ GCPtr<Shape> ShapeTree::TransitionOf(const Tagged<Shape> shape,
   return new_shape;
 }
 int ShapeTree::OffsetOf(const Tagged<Shape> shape,
-                      const std::string_view field) const {
+                        const std::string_view field) const {
   auto current = shape.Get();
   while (current != nullptr) {
     if (*current->field_name_ == field) {
@@ -105,6 +114,41 @@ int ShapeTree::OffsetOf(const Tagged<Shape> shape,
     current = current->parent_.Get();
   }
   return -1;
+}
+GCPtr<ShapedObject::ValueArray> ShapedObject::ValueArray::New(GC* gc,
+                                                              int capacity) {
+  const auto arr = gc->NewSized<ValueArray>(SizeFor(capacity), capacity);
+  for (auto& slot : arr->GetSlots()) {
+    slot = Value::CreateNull();
+  }
+  return arr;
+}
+GCPtr<ShapedObject::ValueArray> ShapedObject::ValueArray::Grow(
+    GC* gc, GCPtr<ValueArray> old, int new_capacity) {
+  const auto arr =
+      gc->NewSized<ValueArray>(SizeFor(new_capacity), new_capacity);
+  const auto old_slots = old->GetSlots();
+  std::uninitialized_copy(old_slots.begin(), old_slots.end(),
+                          arr->GetSlotsPtr());
+  for (int i = old->capacity_; i < new_capacity; ++i) {
+    arr->GetSlotsPtr()[i] = Value::CreateNull();
+  }
+  return arr;
+}
+GCPtr<ShapedObject> ShapedObject::New(GC* gc, Tagged<Shape> shape) {
+  const int slot_count = std::max(shape->slot_index() + 1, 0);
+  const auto values = ValueArray::New(gc, slot_count);
+  return gc->New<ShapedObject>(shape, values);
+}
+void ShapedObject::TransitionTo(GC* gc, Tagged<Shape> new_shape) {
+  if (shape_.Get() == new_shape.Get()) {
+    return;
+  }
+  const int new_count = new_shape->slot_index() + 1;
+  if (new_count > values_.Get()->capacity()) {
+    values_ = Tagged(ValueArray::Grow(gc, values_.Get(), new_count));
+  }
+  shape_ = new_shape;
 }
 }  // namespace runtime
 }  // namespace lang

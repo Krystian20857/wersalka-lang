@@ -102,7 +102,7 @@ class MarkSweepGC : public GC {
   // TODO: configurable
   static constexpr auto kSlabSizes =
       std::array{8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096};
-  static constexpr uint64_t kInitialGcThreshold = 20 * 1024 * 1024;  // 10mb
+  static constexpr uint64_t kInitialGcThreshold = 10 * 1024 * 1024;  // 10mb
 
   void CollectNow(VMThread* thread);
   void OnAllocation(std::size_t size);

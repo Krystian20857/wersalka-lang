@@ -118,6 +118,8 @@ ZonePtr<ASTExpr> Parser::ParseExpr(const Precedence precedence) {
       left = ParseCallExpr(left);
     } else if (At(TokenKind::kOpenBracket)) {
       left = ParseArrayExpr(left);
+    } else if (At(TokenKind::kDot)) {
+      left = ParseMemberAccessExpr(left);
     } else {
       const auto op = Next();
       left = ParseBinarExpr(left, op);
@@ -141,7 +143,7 @@ ZonePtr<ASTExpr> Parser::ParsePrimaryExpr() {
   }
 
   if (At(TokenKind::kIdent)) {
-    return ParseMemberExpr();
+    return ParseIdentExpr();
   }
 
   if (At(TokenKind::kTemplateBegin)) {
@@ -296,7 +298,7 @@ ZonePtr<ASTExpr> Parser::ParseUnaryExpr() {
   const auto expr = ParseExpr(Precedence::kNone);
   return zone_->New<ASTUnaryExpr>(SpanEnd(mark), expr, op);
 }
-ZonePtr<ASTExpr> Parser::ParseMemberExpr() {
+ZonePtr<ASTExpr> Parser::ParseIdentExpr() {
   const auto mark = SpanBegin();
   const auto ident = Expect(TokenKind::kIdent);
   return zone_->New<ASTIdentExpr>(SpanEnd(mark),
@@ -377,7 +379,20 @@ ZonePtr<ASTExpr> Parser::ParseNewExpr() {
     return zone_->New<ASTNewArrayExpr>(SpanEnd(mark), elements);
   }
 
+  if (TryConsume(TokenKind::kOpenBrace)) {
+    Expect(TokenKind::kCloseBrace);
+    return zone_->New<ASTNewObjectExpr>(SpanEnd(mark));
+  }
+
   ABSL_UNREACHABLE();
+}
+ZonePtr<ASTExpr> Parser::ParseMemberAccessExpr(ZonePtr<ASTExpr> left) {
+  Expect(TokenKind::kDot);
+  const auto mark = SpanBegin();
+  const auto field = Expect(TokenKind::kIdent);
+  return zone_->New<ASTMemberAccessExpr>(
+      TextSpan::Merge(left->span(), SpanEnd(mark)), left,
+      zone_->InternString(field->str_v));
 }
 ZonePtr<ASTStmt> Parser::ParseStmt() {
   if (At(TokenKind::kVar)) {
@@ -510,10 +525,10 @@ void Parser::Synchronize() {
     Next();
   }
 }
-int Parser::SpanBegin() const { return tokenizer_->current().span.offset; }
+int Parser::SpanBegin() { return Peek()->span.offset; }
 TextSpan Parser::SpanEnd(int mark) const {
-  const auto end = tokenizer_->current().span.offset;
-  return TextSpan{mark, end - mark};
+  const auto& last = tokens_[pos_ - 1];
+  return TextSpan{mark, last->span.offset + last->span.length - mark};
 }
 Parser::Precedence Parser::GetPrecedence(TokenKind kind) {
   switch (kind) {
@@ -561,6 +576,7 @@ Parser::Precedence Parser::GetPrecedence(TokenKind kind) {
       return Precedence::kExponent;
     case TokenKind::kOpenParen:
     case TokenKind::kOpenBracket:
+    case TokenKind::kDot:
       return Precedence::kPostfix;
 
     default:

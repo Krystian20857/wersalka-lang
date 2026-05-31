@@ -7,9 +7,9 @@
 
 #include "runtime/gc/handle.h"
 #include "runtime/vm/code_object.h"
+#include "runtime/vm/object_impl.h"
 #include "runtime/vm/runtime.h"
 #include "runtime/vm/value.h"
-#include "runtime/vm/object_impl.h"
 
 namespace wersalka {
 namespace lang {
@@ -110,6 +110,9 @@ class VMInterpreter {
 
   template <typename Op>
   static void ExecuteBinIntOp(VMThread* thread, VMFrame* frame, Op op);
+
+  template <typename Op>
+  void ExecuteWildcardBinOp(VMThread* thread, VMFrame* frame, Op op);
 
   Runtime* runtime_;
 };

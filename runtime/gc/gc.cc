@@ -18,7 +18,7 @@ void GCVisitor::WalkObject(Value* value) {
   }
 
   const auto handle = Handle<Object>(value);
-  if (!Visit(handle)) {
+  if (Visit(handle)) {
     return;
   }
 
@@ -32,8 +32,20 @@ void GCVisitor::WalkObject(Value* value) {
       break;
     case ObjectKind::kString:
       break;
-    case ObjectKind::kShapedObject:
+    case ObjectKind::kShapedObject: {
+      const auto obj = static_cast<ShapedObject*>(handle.GetPtr());
+      WalkObject(&obj->shape_.AsValue());
+      WalkObject(&obj->values_.AsValue());
       break;
+    }
+    case ObjectKind::kValueArray: {
+      const auto arr =
+          static_cast<ShapedObject::ValueArray*>(handle.GetPtr());
+      for (auto& slot : arr->GetSlots()) {
+        WalkObject(&slot);
+      }
+      break;
+    }
     case ObjectKind::kArray:
       break;
     case ObjectKind::kShape: {
@@ -82,6 +94,7 @@ void GCVisitor::WalkRoots(VMThread* thread) {
   }
 }
 void GCVisitor::WalkRoots(Runtime* runtime) {
+  WalkObject(&runtime->shapes_.root_.AsValue());
   for (auto& [name, value] : runtime->builtin_globals_) {
     WalkObject(&value);
   }

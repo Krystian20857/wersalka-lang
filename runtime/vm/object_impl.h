@@ -80,6 +80,8 @@ class ArrayObject : public Object {
 
   static GCPtr<ArrayObject> New(GC* gc, std::span<Value> elements);
   static GCPtr<ArrayObject> New(GC* gc, int size);
+  static GCPtr<ArrayObject> NewStringArray(
+      GC* gc, std::span<const std::string_view> strings);
 
   int length() const { return length_; }
   std::span<Value> GetElements() {
@@ -102,14 +104,6 @@ class ArrayObject : public Object {
 
   int length_;
 };
-
-// class ShapedObject : public Object {
-//  public:
-//   static constexpr int kFieldsOffset = TODO;
-//
-//  private:
-//   explicit ShapedObject();
-// };
 
 class Shape : public Object {
  public:
@@ -179,19 +173,72 @@ class ShapeTree {
  public:
   explicit ShapeTree(GC* gc);
 
-  GCPtr<Shape> ShapeOf(ArrayObject field_names) const;
-  GCPtr<Shape> TransitionOf(Tagged<Shape> shape, Tagged<StringObject> field) const;
+  GCPtr<Shape> ShapeOf(Tagged<ArrayObject> field_names) const;
+  GCPtr<Shape> TransitionOf(Tagged<Shape> shape,
+                            Tagged<StringObject> field) const;
 
   // slow offset resolve path
   int OffsetOf(Tagged<Shape> shape, std::string_view field) const;
 
+  Tagged<Shape> root() const { return root_; }
+
  private:
   friend class GCVisitor;
 
-  Tagged<Shape> Root() const { return root_; }
-
   GC* gc_;
   Tagged<Shape> root_;
+};
+
+class ShapedObject : public Object {
+ public:
+  static constexpr auto kKind = ObjectKind::kShapedObject;
+
+  Tagged<Shape> shape() const { return shape_; }
+
+  std::span<Value> GetFields() { return values_.Get()->GetSlots(); }
+
+  void TransitionTo(GC* gc, Tagged<Shape> new_shape);
+
+  static GCPtr<ShapedObject> New(GC* gc, Tagged<Shape> shape);
+
+ private:
+  class ValueArray : public Object {
+   public:
+    static constexpr auto kKind = ObjectKind::kValueArray;
+
+    std::span<Value> GetSlots() { return std::span(GetSlotsPtr(), capacity_); }
+    int capacity() const { return capacity_; }
+
+    static GCPtr<ValueArray> New(GC* gc, int capacity);
+    static GCPtr<ValueArray> Grow(GC* gc, GCPtr<ValueArray> old,
+                                  int new_capacity);
+
+   private:
+    static int SizeFor(int capacity) {
+      return sizeof(ValueArray) + capacity * sizeof(Value);
+    }
+    Value* GetSlotsPtr() {
+      return reinterpret_cast<Value*>(reinterpret_cast<char*>(this) +
+                                      sizeof(ValueArray));
+    }
+    explicit ValueArray(const int capacity)
+        : Object(ObjectKind::kValueArray), capacity_(capacity) {}
+
+    friend class GC;
+    friend class GCVisitor;
+    friend class ShapedObject;
+
+    int capacity_;
+  };
+
+  explicit ShapedObject(const Tagged<Shape> shape, GCPtr<ValueArray> values)
+      : Object(ObjectKind::kShapedObject), shape_(shape), values_(values) {}
+
+  friend class GC;
+  friend class GCVisitor;
+
+  Tagged<Shape> shape_;
+  Tagged<ValueArray> values_;
 };
 
 }  // namespace runtime

@@ -21,6 +21,7 @@ enum class ObjectKind {
   kShape,
   kTransitionArray,
   kShapedObject,  // `instance` of shape
+  kValueArray,    // private backing store for ShapedObject
   kArray
 };
 

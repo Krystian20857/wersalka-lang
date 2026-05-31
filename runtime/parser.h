@@ -76,11 +76,12 @@ class Parser final {
   ZonePtr<ASTExpr> ParseBinarExpr(ZonePtr<ASTExpr> left, ZonePtr<Token> op_token);
   ZonePtr<ASTExpr> ParseAssignExpr(ZonePtr<ASTExpr> target, ZonePtr<Token> op_token, ASTAssignExpr::Operator op);
   ZonePtr<ASTExpr> ParseUnaryExpr();
-  ZonePtr<ASTExpr> ParseMemberExpr();
+  ZonePtr<ASTExpr> ParseIdentExpr();
   ZonePtr<ASTExpr> ParseCallExpr(ZonePtr<ASTExpr> left);
   ZonePtr<ASTExpr> ParseArrayExpr(ZonePtr<ASTExpr> left);
   ZonePtr<ASTExpr> ParseTemplateExpr();
   ZonePtr<ASTExpr> ParseNewExpr();
+  ZonePtr<ASTExpr> ParseMemberAccessExpr(ZonePtr<ASTExpr> left);
 
   ZonePtr<ASTStmt> ParseStmt();
   ZonePtr<ASTStmt> ParseBlockStmt();
@@ -100,7 +101,7 @@ class Parser final {
   ZonePtr<Token> Expect(const TokenSet& tokens);
   ZonePtr<Token> Expect(const TokenKind kind) { return Expect(TokenSet(kind)); }
   void Synchronize();
-  int SpanBegin() const ;
+  int SpanBegin();
   TextSpan SpanEnd(int mark) const;
 
   static Precedence GetPrecedence(TokenKind kind);

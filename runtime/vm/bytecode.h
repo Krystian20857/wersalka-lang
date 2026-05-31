@@ -35,6 +35,7 @@ enum class Opcode : uint8_t {
   kInvoke, kReturn,
 
   kNewArray, kStoreArray, kLoadArray,
+  kNewObject, kSetField, kGetField,
 
   kReserved
 };

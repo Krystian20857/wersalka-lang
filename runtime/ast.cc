@@ -259,8 +259,17 @@ static void DumpNode(const ASTNode* node, std::string& out, int depth) {
       }
       break;
     }
-    default:
-      ABSL_UNREACHABLE();
+    case ASTNode::Kind::kNewObjectExpr: {
+      absl::StrAppendFormat(&out, "%sNewObjectExpr\n", indent);
+      break;
+    }
+    case ASTNode::Kind::kMemberAccessExpr: {
+      const auto* n = static_cast<const ASTMemberAccessExpr*>(node);
+      absl::StrAppendFormat(&out, "%sMemberAccessExpr [.%s]\n", indent,
+                            n->field);
+      DumpNode(n->expr, out, depth + 1);
+      break;
+    }
   }
 }
 

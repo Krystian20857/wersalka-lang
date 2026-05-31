@@ -194,7 +194,15 @@ void CodeGenerator::CompileExpr(Zone& zone, BytecodeBuilder& builder,
       }
       break;
     }
-    case ASTNode::Kind::kArrayExpr: {
+    case ASTNode::Kind::kArrayExpr:{
+      CompileRValue(zone, builder, locals, expr);
+      break;
+    }
+    case ASTNode::Kind::kNewObjectExpr: {
+      builder.Emit(Opcode::kNewObject);
+      break;
+    }
+    case ASTNode::Kind::kMemberAccessExpr: {
       CompileRValue(zone, builder, locals, expr);
       break;
     }
@@ -426,6 +434,14 @@ void CodeGenerator::CompileLValue(Zone& zone, BytecodeBuilder& builder,
     CompileExpr(zone, builder, locals, array_expr->args[0]);
     builder.Emit(Opcode::kSwap);
     builder.Emit(Opcode::kStoreArray);
+  } else if (target->kind() == ASTNode::Kind::kMemberAccessExpr) {
+    const auto member_exor = Cast<ASTMemberAccessExpr>(target);
+    builder.Emit(Opcode::kDup);
+    CompileExpr(zone, builder, locals, member_exor->expr);
+    builder.Emit(Opcode::kSwap);
+    builder.EmitPushConst(ConstantDesc::CreateString(member_exor->field));
+    builder.Emit(Opcode::kSwap);
+    builder.Emit(Opcode::kSetField);
   } else {
     reporter_->Report(
         Diagnostic::Error("LValue can be only "
@@ -456,6 +472,11 @@ void CodeGenerator::CompileRValue(Zone& zone, BytecodeBuilder& builder,
     CompileExpr(zone, builder, locals, array_expr->target);
     CompileExpr(zone, builder, locals, array_expr->args[0]);
     builder.Emit(Opcode::kLoadArray);
+  } else if (value->kind() == ASTNode::Kind::kMemberAccessExpr) {
+    const auto member_exor = Cast<ASTMemberAccessExpr>(value);
+    CompileExpr(zone, builder, locals, member_exor->expr);
+    builder.EmitPushConst(ConstantDesc::CreateString(member_exor->field));
+    builder.Emit(Opcode::kGetField);
   } else {
     reporter_->Report(
         Diagnostic::Error("RValue can be only "

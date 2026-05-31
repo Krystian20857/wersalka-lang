@@ -66,11 +66,14 @@ class Runtime {
       const std::span<const ConstantDesc>& constants, uint32_t arg_count,
       uint32_t max_stack, uint32_t max_locals);
 
+  void RegisterBuiltIns();
+
   // TODO: ZonePtr<...> them
   void RegisterFunction(GCPtr<FunctionObject> function);
   std::optional<GCPtr<FunctionObject>> LookupFunction(std::string_view name);
 
   GC* gc() const { return gc_.get(); }
+  const ShapeTree* shaped_tree() const { return &shapes_; }
 
  private:
   Zone* zone_;

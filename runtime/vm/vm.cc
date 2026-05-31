@@ -371,6 +371,70 @@ Value VMInterpreter::Run(VMThread* thread) {
         frame->pc++;
         break;
       }
+      case Opcode::kNewObject: {
+        const auto object =
+            ShapedObject::New(runtime_->gc(), runtime_->shaped_tree()->root());
+        thread->PushStack(Value::CreateObject(object));
+        frame->pc++;
+        break;
+      }
+      case Opcode::kSetField: {
+        const auto value = thread->PopStack();
+        const auto field = thread->PopStack();
+        const auto object = thread->PopStack();
+        const auto is_object =
+            object.IsObject() &&
+            object.GetObject()->kind() == ObjectKind::kShapedObject;
+        if (!is_object) {
+          // TODO: Exception, not object
+          thread->SetPendingException(Value::CreateNull());
+          break;
+        }
+        const auto is_field_string =
+            field.IsObject() &&
+            field.GetObject()->kind() == ObjectKind::kString;
+        if (!is_field_string) {
+          // TODO: Exception, field not string
+          thread->SetPendingException(Value::CreateNull());
+          break;
+        }
+        const auto shaped_object = object.GetObjectUnchecked<ShapedObject>();
+        const auto field_str = field.GetObjectUnchecked<StringObject>();
+        const auto new_shape = runtime_->shaped_tree()->TransitionOf(
+            shaped_object->shape(), Tagged(field_str));
+        shaped_object->TransitionTo(runtime_->gc(), new_shape);
+        shaped_object->GetFields()[new_shape->slot_index()] = value;
+        frame->pc++;
+        break;
+      }
+      case Opcode::kGetField: {
+        const auto field = thread->PopStack();
+        const auto object = thread->PopStack();
+        const auto is_object =
+            object.IsObject() &&
+            object.GetObject()->kind() == ObjectKind::kShapedObject;
+        if (!is_object) {
+          // TODO: Exception, not object
+          thread->SetPendingException(Value::CreateNull());
+          break;
+        }
+        const auto is_field_string =
+            field.IsObject() &&
+            field.GetObject()->kind() == ObjectKind::kString;
+        if (!is_field_string) {
+          // TODO: Exception, field not string
+          thread->SetPendingException(Value::CreateNull());
+          break;
+        }
+        const auto shaped_object = object.GetObjectUnchecked<ShapedObject>();
+        const auto field_str = field.GetObjectUnchecked<StringObject>();
+        const int slot = runtime_->shaped_tree()->OffsetOf(
+            shaped_object->shape(), *field_str);
+        thread->PushStack(slot < 0 ? Value::CreateNull()
+                                   : shaped_object->GetFields()[slot]);
+        frame->pc++;
+        break;
+      }
       case Opcode::kReserved: {
         ABSL_UNREACHABLE();
       }

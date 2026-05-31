@@ -47,7 +47,9 @@ class ASTNode : public ZoneObject {
     kCallExpr,
     kArrayExpr,
     kAssignExpr,
-    kNewArrayExpr
+    kNewArrayExpr,
+    kNewObjectExpr,
+    kMemberAccessExpr
   };
 
   static constexpr auto kKind = Kind::kUnknown;
@@ -328,7 +330,7 @@ struct ASTArrayExpr : ASTExpr {
   static constexpr auto kKind = Kind::kArrayExpr;
 
   explicit ASTArrayExpr(const TextSpan& span, const ZonePtr<ASTExpr>& target,
-                       const ZonePtrList<ASTExpr>& args)
+                        const ZonePtrList<ASTExpr>& args)
       : ASTExpr(Kind::kArrayExpr, span), target(target), args(args) {}
   ZonePtr<ASTExpr> target;
   ZonePtrList<ASTExpr> args;
@@ -343,6 +345,27 @@ struct ASTNewArrayExpr : ASTExpr {
       : ASTExpr(Kind::kNewArrayExpr, span), elements_(elements) {}
 
   ZonePtrList<ASTExpr> elements_;
+};
+
+// TODO: right now I don't have idea how to
+//  express inline object initialization, for now it's just `{}`
+//  without anything inside
+struct ASTNewObjectExpr : ASTExpr {
+  static constexpr auto kKind = Kind::kNewObjectExpr;
+
+  explicit ASTNewObjectExpr(const TextSpan& span)
+      : ASTExpr(Kind::kNewObjectExpr, span) {}
+};
+
+struct ASTMemberAccessExpr : ASTExpr {
+  static constexpr auto kKind = Kind::kMemberAccessExpr;
+
+  explicit ASTMemberAccessExpr(const TextSpan& span, const ZonePtr<ASTExpr> expr,
+                         const ZoneStr field)
+      : ASTExpr(Kind::kMemberAccessExpr, span), expr(expr), field(field) {}
+
+  ZonePtr<ASTExpr> expr;
+  ZoneStr field;
 };
 
 std::string_view GetBinaryOpMnemonic(ASTBinaryExpr::Operator op);
