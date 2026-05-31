@@ -32,17 +32,18 @@ struct Diagnostic {
     return Diagnostic(Severity::kWarn, message);
   }
 
-  Diagnostic& withLabel(TextSpan span, std::string msg) {
+  // TODO: rename case
+  Diagnostic& WithLabel(TextSpan span, std::string msg) {
     labels.emplace_back(span, msg);
     return *this;
   }
 
-  Diagnostic& withNote(std::string msg) {
+  Diagnostic& WithLabel(std::string msg) {
     notes.emplace_back(Severity::kNote, msg);
     return *this;
   }
 
-  Diagnostic& withHelp(std::string msg) {
+  Diagnostic& WithHelp(std::string msg) {
     notes.emplace_back(Severity::kHelp, msg);
     return *this;
   }
