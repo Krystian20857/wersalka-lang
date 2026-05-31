@@ -27,7 +27,7 @@ func f2() {
     throw ex;
   } catch (var e) {
     print("Error message: {e.message}");
-    print("Error cause: {e.cause}");
+    print("Error cause: {cast(e.cause == null, "bool")}");
     print("Stacktrace: {e.stacktrace}");
 
     var n = 0;

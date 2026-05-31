@@ -72,6 +72,8 @@ class Runtime {
   void RegisterFunction(GCPtr<FunctionObject> function);
   std::optional<GCPtr<FunctionObject>> LookupFunction(std::string_view name);
 
+  Value NewException(std::string_view message);
+
   GC* gc() const { return gc_.get(); }
   const ShapeTree* shaped_tree() const { return &shapes_; }
   const Builtins* builtins() const { return builtins_.get(); }  // refs&&&&?

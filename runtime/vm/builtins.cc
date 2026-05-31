@@ -38,39 +38,41 @@ void Builtins::RegisterBuiltIns() const {
       return Value::CreateNull();
     }
   });
-  runtime_->BindGlobalFunction("cast", 2, [](auto ctx, auto args) -> Value {
-    const auto arg0 = args[0];
-    const auto arg1 = args[1];
-    const auto is_string =
-        arg1.IsObject() && arg1.GetObject()->kind() == ObjectKind::kString;
-    if (!is_string) {
-      // TODO: Exception, invalid value type
-      *ctx->exception = Value::CreateNull();
-      return Value::CreateNull();
-    }
-    const auto cast_type =
-        arg1.template GetObjectUnchecked<StringObject>()->ToStringView();
-    if (cast_type == "int") {
-      return VMIntrinsics::CoerceToInt(arg0)
-          .transform([](const auto it) { return Value::CreateInt(it); })
-          .value_or(Value::CreateNull());
-    } else if (cast_type == "float") {
-      return VMIntrinsics::CoerceToFloat(arg0)
-          .transform([](const auto it) { return Value::CreateFloat(it); })
-          .value_or(Value::CreateNull());
-    } else if (cast_type == "string") {
-      return Value::CreateObject(
-          VMIntrinsics::CoerceToString(ctx->runtime, arg0));
-    } else if (cast_type == "bool") {
-      return VMIntrinsics::CoerceToBool(arg0)
-          .transform([](const auto it) { return Value::CreateBool(it); })
-          .value_or(Value::CreateNull());
-    } else {
-      // TODO: Exception, invalid cast type
-      *ctx->exception = Value::CreateNull();
-      return Value::CreateNull();
-    }
-  });
+  runtime_->BindGlobalFunction(
+      "cast", 2, [](NativeContext* ctx, auto args) -> Value {
+        const auto arg0 = args[0];
+        const auto arg1 = args[1];
+        const auto is_string =
+            arg1.IsObject() && arg1.GetObject()->kind() == ObjectKind::kString;
+        if (!is_string) {
+          *ctx->exception =
+              ctx->runtime->NewException("Invalid cast type, string required");
+          return Value::CreateNull();
+        }
+        const auto cast_type =
+            arg1.template GetObjectUnchecked<StringObject>()->ToStringView();
+        if (cast_type == "int") {
+          return VMIntrinsics::CoerceToInt(arg0)
+              .transform([](const auto it) { return Value::CreateInt(it); })
+              .value_or(Value::CreateNull());
+        } else if (cast_type == "float") {
+          return VMIntrinsics::CoerceToFloat(arg0)
+              .transform([](const auto it) { return Value::CreateFloat(it); })
+              .value_or(Value::CreateNull());
+        } else if (cast_type == "string") {
+          return Value::CreateObject(
+              VMIntrinsics::CoerceToString(ctx->runtime, arg0));
+        } else if (cast_type == "bool") {
+          return VMIntrinsics::CoerceToBool(arg0)
+              .transform([](const auto it) { return Value::CreateBool(it); })
+              .value_or(Value::CreateNull());
+        } else {
+          *ctx->exception = ctx->runtime->NewException(
+              "Unknown cast type, allowed: `int`, `float`, `string`, `bool`");
+          *ctx->exception = Value::CreateNull();
+          return Value::CreateNull();
+        }
+      });
   runtime_->BindGlobalFunction(
       "__gc_stats", 0, [](NativeContext* ctx, auto args) -> Value {
         const auto gc = ctx->runtime->gc();

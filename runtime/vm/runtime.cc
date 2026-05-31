@@ -7,6 +7,15 @@
 #include "runtime/vm/vm.h"
 
 namespace wersalka::lang::runtime {
+Value Runtime::NewException(const std::string_view message) {
+  const auto msg = StringObject::New(gc_.get(), message);
+  const auto exc = builtins_->Shape_Exception.New({
+      {"message", Value::CreateObject(msg)},
+      {"cause", Value::CreateNull()},
+      {"stacktrace", Value::CreateNull()},
+  });
+  return Value::CreateObject(exc);
+}
 void Runtime::AddGlobalValue(const std::string_view name, const Value value) {
   builtin_globals_[zone_->InternString(name)] = value;
 }

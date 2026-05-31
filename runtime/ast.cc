@@ -203,6 +203,9 @@ static void DumpNode(const ASTNode* node, std::string& out, int depth) {
           absl::StrAppendFormat(&out, "%sConstExpr [%s]\n", indent,
                                 n->value->bool_v ? "true" : "false");
           break;
+        case ValueKind::kNull:
+          absl::StrAppendFormat(&out, "%sConstExpr [null]\n", indent);
+          break;
         default:
           ABSL_UNREACHABLE();
       }

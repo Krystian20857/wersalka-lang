@@ -10,8 +10,7 @@ namespace runtime {
 Value VMThread::PopStack() {
   CHECK_GT(stack_top_, stack_.data());
   if (stack_top_ - 1 <= stack_.data()) {
-    // TODO: Exception stack underflow
-    SetPendingException(Value::CreateNull());
+    ThrowException(runtime_->NewException("Stack underflow"));
   }
   return *(--stack_top_);
 }
@@ -21,8 +20,7 @@ Value VMThread::PeekStack() {
 }
 void VMThread::PushStack(Value value) {
   if (stack_top_ >= stack_.data() + kMaxStackSize) {
-    // TODO: Exception stack overflow
-    SetPendingException(Value::CreateNull());
+    ThrowException(runtime_->NewException("Stack overflow"));
     return;
   }
   *(stack_top_++) = value;
@@ -32,8 +30,7 @@ Value* VMThread::GetStackTop() const { return stack_top_; }
 VMFrame* VMThread::PushFrame(const GCPtr<FunctionObject> function,
                              CodeObject* code, Value* locals) {
   if (frame_count_ >= kMaxFrameSize) {
-    // TODO: Exception, stack overflow
-    SetPendingException(Value::CreateNull());
+    ThrowException(runtime_->NewException("Stack overflow"));
     return nullptr;
   }
   const auto frame = &frames_[++frame_count_];
@@ -50,7 +47,6 @@ Value VMThread::GetCurrentException() { return pending_exception_; }
 void VMThread::SetThreadState(VMThreadState state) { thread_state_ = state; }
 VMThreadState VMThread::GetThreadState() const { return thread_state_; }
 void VMThread::Unwind(Value exception) {
-  // TODO: exception handlers here
   while (frame_count_ > 0) {
     const auto frame = CurrentFrame();
     // TODO: bsearch
@@ -140,6 +136,10 @@ Value VMInterpreter::Run(VMThread* thread) {
       }
       case Opcode::kLoadGlobal: {
         const auto name = code_object->constants[instr.c2];
+        if (name.kind != ConstantDesc::Kind::kString) {
+          ThrowRuntimeError(thread, "Invalid LOAD_GLOBAL operand");
+          break;
+        }
         CHECK(name.kind == ConstantDesc::Kind::kString);  // TODO: Exception
         if (auto global = thread->globals_.find(name.str_v);
             global != thread->globals_.end()) {
@@ -291,8 +291,8 @@ Value VMInterpreter::Run(VMThread* thread) {
         const auto callee = *(thread->GetStackTop() - arg_count - 1);
 
         if (!callee.IsObject()) {
-          // TODO: Exception, invalid callee value
-          thread->SetPendingException(Value::CreateNull());
+          ThrowRuntimeError(thread,
+                            "Invalid callee type, function object required");
           frame->pc++;
           break;
         }
@@ -305,8 +305,10 @@ Value VMInterpreter::Run(VMThread* thread) {
           auto* fn = static_cast<NativeFunctionObject*>(obj);
           if (arg_count >=
               static_cast<int>(thread->native_args_buffer_.size())) {
-            // TODO: Exception, too many arguments
-            thread->SetPendingException(Value::CreateNull());
+            ThrowRuntimeError(
+                thread, absl::StrFormat(
+                            "Not enough arguments, required `%d`, present `%d`",
+                            arg_count, thread->native_args_buffer_.size()));
             frame->pc++;
             break;
           }
@@ -329,8 +331,8 @@ Value VMInterpreter::Run(VMThread* thread) {
             frame->pc++;
           }
         } else {
-          // TODO: Exception, not callable
-          thread->SetPendingException(Value::CreateNull());
+          ThrowRuntimeError(thread,
+                            "Invalid callee type, function object required");
           frame->pc++;
         }
         break;
@@ -350,8 +352,7 @@ Value VMInterpreter::Run(VMThread* thread) {
       case Opcode::kNewArray: {
         const auto size = thread->PopStack();
         if (!size.IsInt()) {
-          // TODO: Exception, size must be int
-          thread->SetPendingException(Value::CreateNull());
+          ThrowRuntimeError(thread, "Invalid array size type, `int` required");
           break;
         }
         const auto array =
@@ -367,20 +368,22 @@ Value VMInterpreter::Run(VMThread* thread) {
         const auto is_array =
             array.IsObject() && array.GetObject()->kind() == ObjectKind::kArray;
         if (!is_array) {
-          // TODO: Exception, must be array
-          thread->SetPendingException(Value::CreateNull());
+          ThrowRuntimeError(thread,
+                            "Invalid target type, `array` type required");
           break;
         }
         if (!index_value.IsInt()) {
-          // TODO: Exception, index must be int
-          thread->SetPendingException(Value::CreateNull());
+          ThrowRuntimeError(thread,
+                            "Invalid array index type, `int` type required");
           break;
         }
         const auto index = index_value.GetIntValue();
         const auto array_object = array.GetObjectUnchecked<ArrayObject>();
-        if (index >= array_object->length()) {
-          // TODO: Exception, out of bound
-          thread->SetPendingException(Value::CreateNull());
+        if (index >= array_object->length() || index < 0) {
+          ThrowRuntimeError(
+              thread, absl::StrFormat("Access out of bounds, `%d` must be "
+                                      "greater than `0` and less than `%d`",
+                                      index, array_object->length()));
           break;
         }
         array_object->GetElements()[index] = value;
@@ -393,20 +396,22 @@ Value VMInterpreter::Run(VMThread* thread) {
         const auto is_array =
             array.IsObject() && array.GetObject()->kind() == ObjectKind::kArray;
         if (!is_array) {
-          // TODO: Exception, must be array
-          thread->SetPendingException(Value::CreateNull());
+          ThrowRuntimeError(thread,
+                            "Invalid target type, `array` type required");
           break;
         }
         if (!index_value.IsInt()) {
-          // TODO: Exception, index must be int
-          thread->SetPendingException(Value::CreateNull());
+          ThrowRuntimeError(thread,
+                            "Invalid array index type, `int` type required");
           break;
         }
         const auto index = index_value.GetIntValue();
         const auto array_object = array.GetObjectUnchecked<ArrayObject>();
         if (index >= array_object->length()) {
-          // TODO: Exception, out of bound
-          thread->SetPendingException(Value::CreateNull());
+          ThrowRuntimeError(
+              thread, absl::StrFormat("Access out of bounds, `%d` must be "
+                                      "greater than `0` and less than `%d`",
+                                      index, array_object->length()));
           break;
         }
         thread->PushStack(array_object->GetElements()[index]);
@@ -473,8 +478,7 @@ bool VMInterpreter::CallFunction(VMThread* thread,
   const auto code = function->code_obj();
 
   if (code->arg_count != arg_count) {
-    // TODO: exception
-    thread->SetPendingException(Value::CreateNull());
+    ThrowRuntimeError(thread, "Operand count mismatch");
     return false;
   }
 
@@ -513,24 +517,20 @@ Value VMInterpreter::MaterializeConstant(ConstantDesc desc) const {
 }
 void VMInterpreter::ThrowRuntimeError(VMThread* thread,
                                       const std::string_view message) {
-  const auto msg = StringObject::New(runtime_->gc(), message);
-  const auto exc = runtime_->builtins()->Shape_Exception.New({
-      {"message", Value::CreateObject(msg)},
-      {"cause", Value::CreateNull()},
-      {"stacktrace", Value::CreateNull()},
-  });
-  thread->ThrowException(Value::CreateObject(exc));
+  thread->ThrowException(runtime_->NewException(message));
 }
 
 void VMIntrinsics::SetField(VMThread* thread, const Value object,
                             const Value field, const Value value) {
   if (!object.IsObject() ||
       object.GetObject()->kind() != ObjectKind::kShapedObject) {
-    thread->ThrowException(Value::CreateNull());
+    thread->ThrowException(
+        thread->runtime()->NewException("Invalid type, `object` required"));
     return;
   }
   if (!field.IsObject() || field.GetObject()->kind() != ObjectKind::kString) {
-    thread->ThrowException(Value::CreateNull());
+    thread->ThrowException(
+        thread->runtime()->NewException("Invalid type, `string` required"));
     return;
   }
   const auto shaped = object.GetObjectUnchecked<ShapedObject>();
@@ -545,11 +545,13 @@ Value VMIntrinsics::GetField(VMThread* thread, const Value object,
                              const Value field) {
   if (!object.IsObject() ||
       object.GetObject()->kind() != ObjectKind::kShapedObject) {
-    thread->ThrowException(Value::CreateNull());
+    thread->ThrowException(
+        thread->runtime()->NewException("Invalid type, `object` required"));
     return Value::CreateNull();
   }
   if (!field.IsObject() || field.GetObject()->kind() != ObjectKind::kString) {
-    thread->ThrowException(Value::CreateNull());
+    thread->ThrowException(
+        thread->runtime()->NewException("Invalid type, `string` required"));
     return Value::CreateNull();
   }
   const auto shaped = object.GetObjectUnchecked<ShapedObject>();
@@ -643,8 +645,8 @@ Value VMIntrinsics::Sub(VMThread* thread, Value left, Value right) {
 Value VMIntrinsics::Negate(VMThread* thread, Value value) {
   const auto value_coerced = CoerceToInt(value);
   if (!value_coerced) {
-    // TODO: Exception
-    thread->SetPendingException(Value::CreateNull());
+    thread->ThrowException(thread->runtime()->NewException(
+        "Cannot negate, invalid type, `int` type required"));
     return Value::CreateNull();
   }
   return Value::CreateInt(-(*value_coerced));
@@ -658,7 +660,7 @@ std::string VMIntrinsics::ToString(Runtime* runtime, Value value) {
     return std::to_string(value.GetIntValue());
   }
   if (value.IsBool()) {
-    return std::to_string(value.GetBoolValue());
+    return value.GetBoolValue() ? "true" : "false";
   }
   if (value.IsFloat()) {
     return std::to_string(value.GetFloatValue());
