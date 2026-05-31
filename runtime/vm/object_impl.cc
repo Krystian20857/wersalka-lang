@@ -44,6 +44,29 @@ GCPtr<ArrayObject> ArrayObject::NewStringArray(
   }
   return array;
 }
+GCPtr<ArrayObject> ArrayObject::Concat(GC* gc, const GCPtr<ArrayObject> left,
+                                       const GCPtr<ArrayObject> right) {
+  // TODO: deffer actual concat, array can be just binary tree of concats
+  const auto result_array = New(gc, left->length() + right->length());
+  const auto left_elements = left->GetElements();
+  const auto right_elements = right->GetElements();
+  std::uninitialized_copy(left_elements.begin(), left_elements.end(),
+                          result_array->GetElements().begin());
+  std::uninitialized_copy(
+      right_elements.begin(), right_elements.end(),
+      result_array->GetElements().begin() + left_elements.size());
+  return result_array;
+}
+GCPtr<ArrayObject> ArrayObject::Add(GC* gc, GCPtr<ArrayObject> left,
+                                    Value value) {
+  // TODO: deffer actual concat, array can be just binary tree of concats
+  const auto result_array = New(gc, left->length() + 1);
+  const auto left_elements = left->GetElements();
+  std::uninitialized_copy(left_elements.begin(), left_elements.end(),
+                          result_array->GetElements().begin());
+  result_array->GetElements()[left->length()] = value;
+  return result_array;
+}
 
 GCPtr<Shape> Shape::New(GC* gc, const Tagged<Shape> parent,
                         const Tagged<StringObject> field_name,

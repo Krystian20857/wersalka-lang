@@ -8,6 +8,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "runtime/gc/gc.h"
 #include "runtime/gc/mark_sweep.h"
+#include "runtime/vm/builtins.h"
 #include "runtime/vm/code_object.h"
 #include "runtime/vm/object_impl.h"
 #include "runtime/vm/value.h"
@@ -51,7 +52,10 @@ class Runtime {
   friend class GCVisitor;
 
   explicit Runtime(Zone* zone)
-      : zone_(zone), gc_(std::make_unique<MarkSweepGC>()), shapes_(gc_.get()) {}
+      : zone_(zone),
+        gc_(std::make_unique<MarkSweepGC>()),
+        shapes_(gc_.get()),
+        builtins_(std::make_unique<Builtins>(this)) {}
 
   Zone* GetPermanentZone() const { return zone_; }
 
@@ -66,14 +70,13 @@ class Runtime {
       const std::span<const ConstantDesc>& constants, uint32_t arg_count,
       uint32_t max_stack, uint32_t max_locals);
 
-  void RegisterBuiltIns();
-
   // TODO: ZonePtr<...> them
   void RegisterFunction(GCPtr<FunctionObject> function);
   std::optional<GCPtr<FunctionObject>> LookupFunction(std::string_view name);
 
   GC* gc() const { return gc_.get(); }
   const ShapeTree* shaped_tree() const { return &shapes_; }
+  const Builtins* builtins() const { return builtins_.get(); }  // refs&&&&?
 
  private:
   Zone* zone_;
@@ -82,6 +85,7 @@ class Runtime {
   absl::flat_hash_map<ZoneStr, Value> functions_;
   std::unique_ptr<GC> gc_;
   ShapeTree shapes_;
+  std::unique_ptr<Builtins> builtins_;
 };
 
 }  // namespace runtime

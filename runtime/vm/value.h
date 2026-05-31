@@ -110,6 +110,10 @@ class Value {
   template <typename T>
   GCPtr<T> GetObjectUnchecked() const;
 
+  constexpr bool IsObject(const ObjectKind kind) const {
+    return IsObject() && GetObject()->kind() == kind;
+  }
+
  private:
   constexpr explicit Value(const uint64_t bits) : bits_(bits) {}
 

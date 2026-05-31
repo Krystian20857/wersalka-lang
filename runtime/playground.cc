@@ -20,16 +20,21 @@ int Main() {
 
 func main() {
   var bytes_to_mb = 1024 * 1024;
+  var n = 0;
   while (true) {
     var obj = new {};
     obj.x = 1;
     obj.y = 2;
     obj.z = 3;
 
-    var stats = __gc_stats();
+    var array = new [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
-    print("""Allocated {cast(stats.allocated_bytes, "float") / bytes_to_mb}mb
-    Alive {cast(stats.alive_bytes, "float") / bytes_to_mb}mb""");
+    if (n % 100000 == 0) {
+      var stats = __gc_stats();
+      print("""Allocated {cast(stats.allocated_bytes, "float") / bytes_to_mb}mb
+      Alive {cast(stats.alive_bytes, "float") / bytes_to_mb}mb""");
+    }
+    n += 1;
   }
 
   print("x, y, z = {obj.x}, {obj.y}, {obj.z}");
@@ -46,11 +51,11 @@ func main() {
   std::cout << DumpAST(ast);
 
   Runtime runtime(&zone);
-  runtime.RegisterBuiltIns();
+  runtime.builtins()->RegisterBuiltIns();
   runtime.BindGlobalFunction(
       "print", 1, [](const auto context, const auto args) {
         const auto arg0 = args[0];
-        std::cout << VMIntrinsics::ToString(context->runtime, arg0) << "\n";
+        std::cout << VMIntrinsics::ToString(context->runtime, arg0) << std::endl;
         return Value::CreateNull();
       });
   CodeGenerator codegen(&runtime, &reporter);

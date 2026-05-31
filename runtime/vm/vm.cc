@@ -179,8 +179,10 @@ Value VMInterpreter::Run(VMThread* thread) {
         break;
       }
       case Opcode::kSub: {
-        ExecuteWildcardBinOp(thread, frame,
-                             [](auto a, auto b) { return a + b; });
+        const auto right = thread->PopStack();
+        const auto left = thread->PopStack();
+        thread->PushStack(VMIntrinsics::Sub(thread, left, right));
+        frame->pc++;
         break;
       }
       case Opcode::kMul: {
@@ -546,8 +548,7 @@ bool VMIntrinsics::IsTruthful(Value value) {
 Value VMIntrinsics::Add(VMThread* thread, Value left, Value right) {
   // string concat
   const auto do_concat =
-      (left.IsObject() && left.GetObject()->kind() == ObjectKind::kString) ||
-      (right.IsObject() && right.GetObject()->kind() == ObjectKind::kString);
+      left.IsObject(ObjectKind::kString) || right.IsObject(ObjectKind::kString);
   if (do_concat) {
     HandleScope scope(thread);
     const auto left_string =
@@ -562,6 +563,14 @@ Value VMIntrinsics::Add(VMThread* thread, Value left, Value right) {
                       [](auto a, auto b) { return a + b; });
   } else {
     return BinIntOp(thread, left, right, [](auto a, auto b) { return a + b; });
+  }
+}
+Value VMIntrinsics::Sub(VMThread* thread, Value left, Value right) {
+  if (right.IsFloat() || left.IsFloat()) {
+    return BinFloatOp(thread, left, right,
+                      [](auto a, auto b) { return a - b; });
+  } else {
+    return BinIntOp(thread, left, right, [](auto a, auto b) { return a - b; });
   }
 }
 Value VMIntrinsics::Negate(VMThread* thread, Value value) {

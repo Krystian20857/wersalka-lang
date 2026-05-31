@@ -13,6 +13,7 @@ namespace wersalka {
 namespace lang {
 namespace runtime {
 
+class ShapedObject;
 class ShapeTree;
 
 class StringObject : public Object {
@@ -82,6 +83,9 @@ class ArrayObject : public Object {
   static GCPtr<ArrayObject> New(GC* gc, int size);
   static GCPtr<ArrayObject> NewStringArray(
       GC* gc, std::span<const std::string_view> strings);
+  static GCPtr<ArrayObject> Concat(GC* gc, GCPtr<ArrayObject> left,
+                                   GCPtr<ArrayObject> right);
+  static GCPtr<ArrayObject> Add(GC* gc, GCPtr<ArrayObject> left, Value value);
 
   int length() const { return length_; }
   std::span<Value> GetElements() {

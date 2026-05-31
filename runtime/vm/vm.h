@@ -126,6 +126,7 @@ class VMIntrinsics {
 
   static bool IsTruthful(Value value);
   static Value Add(VMThread* thread, Value left, Value right);
+  static Value Sub(VMThread* thread, Value left, Value right);
   static Value Negate(VMThread* thread, Value value);
   static std::string ToString(Runtime* runtime, Value value);
   static int IdentityHash(Runtime* runtime, Object* object);
