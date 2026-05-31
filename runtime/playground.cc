@@ -43,8 +43,10 @@ func main() {
 )";
   Zone zone;
   DiagnosticReporter reporter;
-  Tokenizer tokenizer(&zone, &reporter, source);
-  Parser parser(&zone, &tokenizer, &reporter);
+
+  const auto source_file = std::make_unique<SourceFile>(source);
+  Tokenizer tokenizer(&zone, &reporter, source_file.get());
+  Parser parser(&zone, &tokenizer, &reporter, source_file.get());
 
   const auto ast = parser.Parse();
 
@@ -55,10 +57,12 @@ func main() {
   runtime.BindGlobalFunction(
       "print", 1, [](const auto context, const auto args) {
         const auto arg0 = args[0];
-        std::cout << VMIntrinsics::ToString(context->runtime, arg0) << std::endl;
+        std::cout << VMIntrinsics::ToString(context->runtime, arg0)
+                  << std::endl;
         return Value::CreateNull();
       });
-  CodeGenerator codegen(&runtime, &reporter);
+  Zone codegen_zone;
+  CodeGenerator codegen(&runtime, &reporter, &codegen_zone, source_file.get());
 
   if (Is<ASTCompileUnit>(ast)) {
     const auto compile_unit = Cast<ASTCompileUnit>(ast);
@@ -75,9 +79,10 @@ func main() {
   for (auto diagnostic : reporter.diagnostics()) {
     std::cout << diagnostic.message << std::endl;
     for (auto label : diagnostic.labels) {
-      std::cout << absl::StrFormat("\t[%d:%d] %s\n", label.span.offset,
-                                   label.span.offset + label.span.length,
-                                   label.message);
+      const auto location =
+          diagnostic.source_file->LocationOf(label.span.offset);
+      std::cout << absl::StrFormat("\t[%d:%d] %s\n", location.line,
+                                   location.column, label.message);
     }
   }
 

@@ -84,14 +84,15 @@ struct Token : ZoneObject {
 class Tokenizer {
  public:
   Tokenizer(Zone* zone, DiagnosticReporter* diagnostic,
-            const std::string_view source)
+            const ZonePtr<SourceFile> source_file)
       : zone_(zone),
         diagnostic_(diagnostic),
-        source_(source),
+        source_(source_file->source()),
         pos_(0),
         record_start_(0),
         has_error_(false),
-        current_(TokenKind::kBegin) {
+        current_(TokenKind::kBegin),
+        source_file_(source_file) {
     PushState(State::Kind::kNormal);
   }
 
@@ -140,6 +141,7 @@ class Tokenizer {
   Token current_;
   std::stack<State> state_;
   std::string scratch_buffer_;
+  ZonePtr<SourceFile> source_file_;
 };
 
 }  // namespace runtime

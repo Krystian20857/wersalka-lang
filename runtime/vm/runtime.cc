@@ -25,15 +25,6 @@ Value Runtime::LookupGlobal(std::string_view name) {
   }
   return Value::CreateNull();
 }
-ZonePtr<CodeObject> Runtime::CreateCodeObject(
-    const std::span<const Instr>& instructions,
-    const std::span<const ConstantDesc>& constants, uint32_t arg_count,
-    uint32_t max_stack, uint32_t max_locals) {
-  const auto code_object = zone_->New<CodeObject>(
-      instructions, constants, arg_count, max_stack, max_locals);
-  code_objects.push_back(code_object);
-  return code_object;
-}
 void Runtime::RegisterFunction(FunctionObject* function) {
   functions_[zone_->InternString(function->name())] =
       Value::CreateObject(function);

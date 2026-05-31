@@ -15,53 +15,55 @@ namespace lang {
 namespace runtime {
 namespace {
 constexpr auto kDebugDisassembly = true;
-}
+constexpr auto kDebugDisplayLines = false;
+}  // namespace
 
 ZonePtr<CodeObject> CodeGenerator::CreateCodeObject(
     ZonePtr<ASTFunctionDecl> ast_func) {
-  Zone builder_zone;
-  BytecodeBuilder builder(&builder_zone);
-  LocalsTable locals(&builder_zone, 0);
+  LocalsTable locals(zone_, 0);
 
   // push args, args starts from local index 0
   for (const auto arg : ast_func->params) {
     locals.DefineVar(arg);
   }
 
-  CompileStmt(builder_zone, builder, locals, ast_func->block);
+  CompileStmt(locals, ast_func->block);
 
   // native return check
-  if (!builder.instructions().empty() &&
-      builder.instructions()[builder.instructions().size() - 1].op !=
+  if (!builder_.instructions().empty() &&
+      builder_.instructions()[builder_.instructions().size() - 1].op !=
           Opcode::kReturn) {
-    builder.EmitPushConst(ConstantDesc::CreateNull());
-    builder.Emit(Opcode::kReturn);
+    builder_.EmitPushConst(ConstantDesc::CreateNull());
+    builder_.Emit(Opcode::kReturn);
   }
+
+  const auto rt_zone = runtime_->GetPermanentZone();
+  const auto instructions = FreezeInstructions(rt_zone, builder_);
+  const auto constants = FreezeConstants(rt_zone, builder_);
+  const auto code_object = runtime_->CreateCodeObject(
+      instructions, constants,
+      rt_zone->CopyArray(builder_.debug_info().ToSpan()),
+      ast_func->params.size(),                        // arg count
+      ComputeMaxStackDepth(instructions, constants),  // max stack TODO
+      locals.max_locals());
 
   if (kDebugDisassembly) {
     std::cout << absl::StrFormat("Disassembly `%s`\n", ast_func->name);
-    BytecodeDisassembler(builder.instructions(), builder.constants())
+    BytecodeDisassembler(code_object, kDebugDisplayLines)
         .Disassemble(std::cout);
     std::cout << std::endl;
   }
 
-  const auto rt_zone = runtime_->GetPermanentZone();
-  const auto instructions = FreezeInstructions(rt_zone, builder);
-  const auto constants = FreezeConstants(rt_zone, builder);
-  return runtime_->CreateCodeObject(
-      instructions, constants,
-      ast_func->params.size(),                        // arg count
-      ComputeMaxStackDepth(instructions, constants),  // max stack TODO
-      locals.max_locals());
+  return code_object;
 }
-void CodeGenerator::CompileStmt(Zone& zone, BytecodeBuilder& builder,
-                                LocalsTable& locals, ZonePtr<ASTStmt> stmt) {
+void CodeGenerator::CompileStmt(LocalsTable& locals, ZonePtr<ASTStmt> stmt) {
+  MarkCurrentLine(stmt);
   switch (stmt->kind()) {
     case ASTNode::Kind::kBlockStmt: {
       const auto block_stmt = Cast<ASTBlockStmt>(stmt);
       locals.PushScope();
       for (const auto inner_stmt : block_stmt->stmts) {
-        CompileStmt(zone, builder, locals, inner_stmt);
+        CompileStmt(locals, inner_stmt);
       }
       locals.PopScope();
       break;
@@ -70,164 +72,163 @@ void CodeGenerator::CompileStmt(Zone& zone, BytecodeBuilder& builder,
       const auto var_stmt = Cast<ASTVarStmt>(stmt);
       const auto local_idx = locals.DefineVar(var_stmt->name);
       if (var_stmt->init_expr) {
-        CompileExpr(zone, builder, locals, *var_stmt->init_expr);
+        CompileExpr(locals, *var_stmt->init_expr);
       } else {
-        builder.EmitPushConst(ConstantDesc::CreateNull());
+        builder_.EmitPushConst(ConstantDesc::CreateNull());
       }
-      builder.EmitVarLocal(Opcode::kStoreLocal, local_idx);
+      builder_.EmitVarLocal(Opcode::kStoreLocal, local_idx);
       break;
     }
     case ASTNode::Kind::kExprStmt: {
       const auto expr_stmt = Cast<ASTExprStmt>(stmt);
-      CompileExpr(zone, builder, locals, expr_stmt->expr);
-      builder.Emit(Opcode::kPop);
+      CompileExpr(locals, expr_stmt->expr);
+      builder_.Emit(Opcode::kPop);
       break;
     }
     case ASTNode::Kind::kIfStmt: {
       const auto if_stmt = Cast<ASTIfStmt>(stmt);
-      const auto false_label = builder.NewLabel();
-      const auto exit_label = builder.NewLabel();
+      const auto false_label = builder_.NewLabel();
+      const auto exit_label = builder_.NewLabel();
       const auto has_else_branch =
           if_stmt->alternate.has_value() || if_stmt->else_block.has_value();
-      CompileExpr(zone, builder, locals, if_stmt->condition);
-      builder.EmitJump(Opcode::kJmpIfFalse, false_label);
-      CompileStmt(zone, builder, locals, if_stmt->then);
+      CompileExpr(locals, if_stmt->condition);
+      builder_.EmitJump(Opcode::kJmpIfFalse, false_label);
+      CompileStmt(locals, if_stmt->then);
       if (has_else_branch) {
-        builder.EmitJump(Opcode::kJmp, exit_label);
+        builder_.EmitJump(Opcode::kJmp, exit_label);
       }
-      builder.BindLabel(false_label);
+      builder_.BindLabel(false_label);
       if (has_else_branch) {
         if (if_stmt->alternate) {
-          CompileStmt(zone, builder, locals, *if_stmt->alternate);
+          CompileStmt(locals, *if_stmt->alternate);
         } else if (if_stmt->else_block) {
-          CompileStmt(zone, builder, locals, *if_stmt->else_block);
+          CompileStmt(locals, *if_stmt->else_block);
         }
-        builder.BindLabel(exit_label);
+        builder_.BindLabel(exit_label);
       }
       break;
     }
     case ASTNode::Kind::kWhileStmt: {
       const auto while_stmt = Cast<ASTWhileStmt>(stmt);
-      const auto label = builder.NewLabel();
-      const auto exit_label = builder.NewLabel();
-      builder.BindLabel(label);
-      CompileExpr(zone, builder, locals, while_stmt->condition);
-      builder.EmitJump(Opcode::kJmpIfFalse, exit_label);
-      CompileStmt(zone, builder, locals, while_stmt->block);
-      builder.EmitJump(Opcode::kJmp, label);
-      builder.BindLabel(exit_label);
+      const auto label = builder_.NewLabel();
+      const auto exit_label = builder_.NewLabel();
+      builder_.BindLabel(label);
+      CompileExpr(locals, while_stmt->condition);
+      builder_.EmitJump(Opcode::kJmpIfFalse, exit_label);
+      CompileStmt(locals, while_stmt->block);
+      builder_.EmitJump(Opcode::kJmp, label);
+      builder_.BindLabel(exit_label);
       break;
     }
     case ASTNode::Kind::kReturnStmt: {
       const auto return_stmt = Cast<ASTReturnStmt>(stmt);
-      CompileExpr(zone, builder, locals, return_stmt->expr);
-      builder.Emit(Opcode::kReturn);
+      CompileExpr(locals, return_stmt->expr);
+      builder_.Emit(Opcode::kReturn);
       break;
     }
     default:
       ABSL_UNREACHABLE();
   }
 }
-void CodeGenerator::CompileExpr(Zone& zone, BytecodeBuilder& builder,
-                                LocalsTable& locals, ZonePtr<ASTExpr> expr) {
+void CodeGenerator::CompileExpr(LocalsTable& locals, ZonePtr<ASTExpr> expr) {
+  MarkCurrentLine(expr);
   switch (expr->kind()) {
     case ASTNode::Kind::kConstExpr: {
       const auto const_expr = Cast<ASTConstExpr>(expr);
-      const auto value = CompileConstant(builder, const_expr->value);
-      builder.EmitPushConst(value);
+      const auto value = CompileConstant(const_expr->value);
+      builder_.EmitPushConst(value);
       break;
     }
     case ASTNode::Kind::kBinaryExpr: {
       const auto binary_expr = Cast<ASTBinaryExpr>(expr);
-      CompileBinaryExpr(zone, builder, locals, binary_expr);
+      CompileBinaryExpr(locals, binary_expr);
       break;
     }
     case ASTNode::Kind::kUnaryExpr: {
       const auto unary_expr = Cast<ASTUnaryExpr>(expr);
-      CompileUnaryExpr(zone, builder, locals, unary_expr);
+      CompileUnaryExpr(locals, unary_expr);
       break;
     }
     case ASTNode::Kind::kGroupExpr: {
       const auto group_expr = Cast<ASTGroupExpr>(expr);
-      CompileExpr(zone, builder, locals, group_expr->expr);
+      CompileExpr(locals, group_expr->expr);
       break;
     }
     case ASTNode::Kind::kIdentExpr: {
       const auto ident_expr = Cast<ASTIdentExpr>(expr);
       const auto slot = locals.LookupVar(ident_expr->ident);
       if (slot) {
-        builder.EmitVarLocal(Opcode::kLoadLocal, *slot);
+        builder_.EmitVarLocal(Opcode::kLoadLocal, *slot);
       } else {
-        builder.EmitVarGlobal(Opcode::kLoadGlobal, ident_expr->ident);
+        builder_.EmitVarGlobal(Opcode::kLoadGlobal, ident_expr->ident);
       }
       break;
     }
     case ASTNode::Kind::kCallExpr: {
       const auto call_expr = Cast<ASTCallExpr>(expr);
-      CompileExpr(zone, builder, locals, call_expr->callee);
+      CompileExpr(locals, call_expr->callee);
       for (const auto arg : call_expr->args) {
-        CompileExpr(zone, builder, locals, arg);
+        CompileExpr(locals, arg);
       }
-      builder.EmitInvoke(Opcode::kInvoke, call_expr->args.size());
+      builder_.EmitInvoke(Opcode::kInvoke, call_expr->args.size());
       break;
     }
     case ASTNode::Kind::kAssignExpr: {
       const auto assign_expr = Cast<ASTAssignExpr>(expr);
-      CompileAssignExpr(zone, builder, locals, assign_expr);
+      CompileAssignExpr(locals, assign_expr);
       break;
     }
     case ASTNode::Kind::kTemplateExpr: {
       const auto template_expr = Cast<ASTTemplateExpr>(expr);
-      CompileTemplateExpr(zone, builder, locals, template_expr);
+      CompileTemplateExpr(locals, template_expr);
       break;
     }
     case ASTNode::Kind::kNewArrayExpr: {
       const auto new_expr = Cast<ASTNewArrayExpr>(expr);
-      builder.EmitPushConst(
+      builder_.EmitPushConst(
           ConstantDesc::CreateUInt(new_expr->elements_.size()));
-      builder.Emit(Opcode::kNewArray);
+      builder_.Emit(Opcode::kNewArray);
       for (auto n = 0; n < new_expr->elements_.size(); n++) {
-        builder.Emit(Opcode::kDup);
-        builder.EmitPushConst(ConstantDesc::CreateUInt(n));
-        CompileExpr(zone, builder, locals, new_expr->elements_[n]);
-        builder.Emit(Opcode::kStoreArray);
+        builder_.Emit(Opcode::kDup);
+        builder_.EmitPushConst(ConstantDesc::CreateUInt(n));
+        CompileExpr(locals, new_expr->elements_[n]);
+        builder_.Emit(Opcode::kStoreArray);
       }
       break;
     }
-    case ASTNode::Kind::kArrayExpr:{
-      CompileRValue(zone, builder, locals, expr);
+    case ASTNode::Kind::kArrayExpr: {
+      CompileRValue(locals, expr);
       break;
     }
     case ASTNode::Kind::kNewObjectExpr: {
-      builder.Emit(Opcode::kNewObject);
+      builder_.Emit(Opcode::kNewObject);
       break;
     }
     case ASTNode::Kind::kMemberAccessExpr: {
-      CompileRValue(zone, builder, locals, expr);
+      CompileRValue(locals, expr);
       break;
     }
     default:
       ABSL_UNREACHABLE();
   }
 }
-void CodeGenerator::CompileBinaryExpr(Zone& zone, BytecodeBuilder& builder,
-                                      LocalsTable& locals,
+void CodeGenerator::CompileBinaryExpr(LocalsTable& locals,
                                       ZonePtr<ASTBinaryExpr> expr) {
   // special cases
   if (expr->op == ASTBinaryExpr::Operator::kExp) {
-    builder.EmitVarGlobal(Opcode::kLoadGlobal, "__builtin_exp");
-    CompileExpr(zone, builder, locals, expr->left);
-    CompileExpr(zone, builder, locals, expr->right);
-    builder.EmitInvoke(Opcode::kInvoke, 2);
+    builder_.EmitVarGlobal(Opcode::kLoadGlobal, "__builtin_exp");
+    CompileExpr(locals, expr->left);
+    CompileExpr(locals, expr->right);
+    builder_.EmitInvoke(Opcode::kInvoke, 2);
     return;
   }
 
   // TODO: could be separated opcode
   if (expr->op == ASTBinaryExpr::Operator::kCmpNe) {
-    CompileExpr(zone, builder, locals, expr->left);
-    CompileExpr(zone, builder, locals, expr->right);
-    builder.Emit(Opcode::kCmpEq);
-    builder.Emit(Opcode::kNeg);
+    CompileExpr(locals, expr->left);
+    CompileExpr(locals, expr->right);
+    builder_.Emit(Opcode::kCmpEq);
+    builder_.Emit(Opcode::kNeg);
   }
 
   // normal cases
@@ -284,42 +285,40 @@ void CodeGenerator::CompileBinaryExpr(Zone& zone, BytecodeBuilder& builder,
       ABSL_UNREACHABLE();
   }
 
-  CompileExpr(zone, builder, locals, expr->left);
-  CompileExpr(zone, builder, locals, expr->right);
-  builder.Emit(opcode);
+  CompileExpr(locals, expr->left);
+  CompileExpr(locals, expr->right);
+  builder_.Emit(opcode);
 }
-void CodeGenerator::CompileUnaryExpr(Zone& zone, BytecodeBuilder& builder,
-                                     LocalsTable& locals,
+void CodeGenerator::CompileUnaryExpr(LocalsTable& locals,
                                      ZonePtr<ASTUnaryExpr> expr) {
-  CompileExpr(zone, builder, locals, expr->expr);
+  CompileExpr(locals, expr->expr);
   switch (expr->op) {
     case ASTUnaryExpr::Operator::kPlus: {
       // noop, for now
       break;
     }
     case ASTUnaryExpr::Operator::kNeg: {
-      builder.Emit(Opcode::kNeg);
+      builder_.Emit(Opcode::kNeg);
       break;
     }
     case ASTUnaryExpr::Operator::kLogicNeg: {
-      builder.Emit(Opcode::kNeg);
+      builder_.Emit(Opcode::kNeg);
       break;
     }
     case ASTUnaryExpr::Operator::kBitwiseNeg: {
       // ~x = x ^ (0xFFFF...)
       // JVM does exactly the same
-      builder.EmitPushConst(ConstantDesc::CreateUInt(~uint64_t{0}));
-      builder.Emit(Opcode::kXor);
+      builder_.EmitPushConst(ConstantDesc::CreateUInt(~uint64_t{0}));
+      builder_.Emit(Opcode::kXor);
       break;
     }
   }
 }
-void CodeGenerator::CompileAssignExpr(Zone& zone, BytecodeBuilder& builder,
-                                      LocalsTable& locals,
+void CodeGenerator::CompileAssignExpr(LocalsTable& locals,
                                       ZonePtr<ASTAssignExpr> expr) {
   if (expr->op == ASTAssignExpr::Operator::kAssign) {
-    CompileExpr(zone, builder, locals, expr->value);
-    CompileLValue(zone, builder, locals, expr->target);
+    CompileExpr(locals, expr->value);
+    CompileLValue(locals, expr->target);
     return;
   }
 
@@ -359,23 +358,22 @@ void CodeGenerator::CompileAssignExpr(Zone& zone, BytecodeBuilder& builder,
       ABSL_UNREACHABLE();
   }
 
-  CompileRValue(zone, builder, locals, expr->target);
-  CompileExpr(zone, builder, locals, expr->value);
-  builder.Emit(op);
-  CompileLValue(zone, builder, locals, expr->target);
+  CompileRValue(locals, expr->target);
+  CompileExpr(locals, expr->value);
+  builder_.Emit(op);
+  CompileLValue(locals, expr->target);
 }
-void CodeGenerator::CompileTemplateExpr(Zone& zone, BytecodeBuilder& builder,
-                                        LocalsTable& locals,
+void CodeGenerator::CompileTemplateExpr(LocalsTable& locals,
                                         ZonePtr<ASTTemplateExpr> expr) {
   // is that even possible?
   if (expr->segments.empty()) {
-    builder.EmitPushConst(ConstantDesc::CreateString(""));
+    builder_.EmitPushConst(ConstantDesc::CreateString(""));
     return;
   }
 
   if (expr->segments.size() == 1 &&
       expr->segments[0].kind == ASTTemplateExpr::Segment::kPart) {
-    builder.EmitPushConst(ConstantDesc::CreateString(expr->segments[0].str_v));
+    builder_.EmitPushConst(ConstantDesc::CreateString(expr->segments[0].str_v));
     return;
   }
 
@@ -383,11 +381,11 @@ void CodeGenerator::CompileTemplateExpr(Zone& zone, BytecodeBuilder& builder,
   auto push_segments = [&](const ASTTemplateExpr::Segment& segment) {
     switch (segment.kind) {
       case ASTTemplateExpr::Segment::kPart: {
-        builder.EmitPushConst(ConstantDesc::CreateString(segment.str_v));
+        builder_.EmitPushConst(ConstantDesc::CreateString(segment.str_v));
         break;
       }
       case ASTTemplateExpr::Segment::kExpr: {
-        CompileExpr(zone, builder, locals, segment.expr_v);
+        CompileExpr(locals, segment.expr_v);
         break;
       }
     }
@@ -395,97 +393,98 @@ void CodeGenerator::CompileTemplateExpr(Zone& zone, BytecodeBuilder& builder,
 
   // TODO: make vm intrinsic from this
   const auto acc = locals.DefineSyntheticVar();
-  builder.EmitPushConst(ConstantDesc::CreateString(""));
-  builder.EmitVarLocal(Opcode::kStoreLocal, acc);
+  builder_.EmitPushConst(ConstantDesc::CreateString(""));
+  builder_.EmitVarLocal(Opcode::kStoreLocal, acc);
   for (const auto& segment : segments) {
-    builder.EmitVarLocal(Opcode::kLoadLocal, acc);
+    builder_.EmitVarLocal(Opcode::kLoadLocal, acc);
     push_segments(segment);
-    builder.Emit(Opcode::kAdd);
-    builder.EmitVarLocal(Opcode::kStoreLocal, acc);
+    builder_.Emit(Opcode::kAdd);
+    builder_.EmitVarLocal(Opcode::kStoreLocal, acc);
   }
-  builder.EmitVarLocal(Opcode::kLoadLocal, acc);
+  builder_.EmitVarLocal(Opcode::kLoadLocal, acc);
 }
-void CodeGenerator::CompileLValue(Zone& zone, BytecodeBuilder& builder,
-                                  LocalsTable& locals,
+void CodeGenerator::CompileLValue(LocalsTable& locals,
                                   ZonePtr<ASTExpr> target) {
   if (target->kind() == ASTNode::Kind::kIdentExpr) {
     const auto ident_expr = Cast<ASTIdentExpr>(target);
     const auto slot = locals.LookupVar(ident_expr->ident);
-    builder.Emit(Opcode::kDup);
+    builder_.Emit(Opcode::kDup);
     if (slot) {
-      builder.EmitVarLocal(Opcode::kStoreLocal, *slot);
+      builder_.EmitVarLocal(Opcode::kStoreLocal, *slot);
     } else {
-      builder.EmitVarGlobal(Opcode::kStoreGlobal, ident_expr->ident);
+      builder_.EmitVarGlobal(Opcode::kStoreGlobal, ident_expr->ident);
     }
   } else if (target->kind() == ASTNode::Kind::kArrayExpr) {
     const auto array_expr = Cast<ASTArrayExpr>(target);
     if (array_expr->args.size() != 1) {
       reporter_->Report(
           Diagnostic::Error(
+              source_file_,
               "Only single dimensional array access operator is supported")
               .WithLabel(target->span(),
                          "invalid operand count for `[...]` operator"));
       return;
     }
     // TODO: add more stack operation opcodes?
-    builder.Emit(Opcode::kDup);
-    CompileExpr(zone, builder, locals, array_expr->target);
-    builder.Emit(Opcode::kSwap);
-    CompileExpr(zone, builder, locals, array_expr->args[0]);
-    builder.Emit(Opcode::kSwap);
-    builder.Emit(Opcode::kStoreArray);
+    builder_.Emit(Opcode::kDup);
+    CompileExpr(locals, array_expr->target);
+    builder_.Emit(Opcode::kSwap);
+    CompileExpr(locals, array_expr->args[0]);
+    builder_.Emit(Opcode::kSwap);
+    builder_.Emit(Opcode::kStoreArray);
   } else if (target->kind() == ASTNode::Kind::kMemberAccessExpr) {
     const auto member_exor = Cast<ASTMemberAccessExpr>(target);
-    builder.Emit(Opcode::kDup);
-    CompileExpr(zone, builder, locals, member_exor->expr);
-    builder.Emit(Opcode::kSwap);
-    builder.EmitPushConst(ConstantDesc::CreateString(member_exor->field));
-    builder.Emit(Opcode::kSwap);
-    builder.Emit(Opcode::kSetField);
+    builder_.Emit(Opcode::kDup);
+    CompileExpr(locals, member_exor->expr);
+    builder_.Emit(Opcode::kSwap);
+    builder_.EmitPushConst(ConstantDesc::CreateString(member_exor->field));
+    builder_.Emit(Opcode::kSwap);
+    builder_.Emit(Opcode::kSetField);
   } else {
     reporter_->Report(
-        Diagnostic::Error("LValue can be only "
+        Diagnostic::Error(source_file_,
+                          "LValue can be only "
                           "local variables or global symbols")
             .WithLabel(target->span(), "non-assignable left expression"));
   }
 }
-void CodeGenerator::CompileRValue(Zone& zone, BytecodeBuilder& builder,
-                                  LocalsTable& locals, ZonePtr<ASTExpr> value) {
+void CodeGenerator::CompileRValue(LocalsTable& locals, ZonePtr<ASTExpr> value) {
   if (value->kind() == ASTNode::Kind::kIdentExpr) {
     const auto ident_expr = Cast<ASTIdentExpr>(value);
     const auto slot = locals.LookupVar(ident_expr->ident);
     if (slot) {
-      builder.EmitVarLocal(Opcode::kLoadLocal, *slot);
+      builder_.EmitVarLocal(Opcode::kLoadLocal, *slot);
     } else {
-      builder.EmitVarGlobal(Opcode::kLoadGlobal, ident_expr->ident);
+      builder_.EmitVarGlobal(Opcode::kLoadGlobal, ident_expr->ident);
     }
   } else if (value->kind() == ASTNode::Kind::kArrayExpr) {
     const auto array_expr = Cast<ASTArrayExpr>(value);
     if (array_expr->args.size() != 1) {
       reporter_->Report(
           Diagnostic::Error(
+              source_file_,
               "Only single dimensional array access operator is supported")
               .WithLabel(value->span(),
                          "invalid operand count for `[...]` operator"));
       return;
     }
-    CompileExpr(zone, builder, locals, array_expr->target);
-    CompileExpr(zone, builder, locals, array_expr->args[0]);
-    builder.Emit(Opcode::kLoadArray);
+    CompileExpr(locals, array_expr->target);
+    CompileExpr(locals, array_expr->args[0]);
+    builder_.Emit(Opcode::kLoadArray);
   } else if (value->kind() == ASTNode::Kind::kMemberAccessExpr) {
     const auto member_exor = Cast<ASTMemberAccessExpr>(value);
-    CompileExpr(zone, builder, locals, member_exor->expr);
-    builder.EmitPushConst(ConstantDesc::CreateString(member_exor->field));
-    builder.Emit(Opcode::kGetField);
+    CompileExpr(locals, member_exor->expr);
+    builder_.EmitPushConst(ConstantDesc::CreateString(member_exor->field));
+    builder_.Emit(Opcode::kGetField);
   } else {
     reporter_->Report(
-        Diagnostic::Error("RValue can be only "
+        Diagnostic::Error(source_file_,
+                          "RValue can be only "
                           "local variables or global symbols")
             .WithLabel(value->span(), "non-assignable left expression"));
   }
 }
-ConstantDesc CodeGenerator::CompileConstant(BytecodeBuilder& builder,
-                                            ZonePtr<Token> token) {
+ConstantDesc CodeGenerator::CompileConstant(ZonePtr<Token> token) {
   // TODO: signed/unsigned
   switch (token->value_kind) {
     case ValueKind::kNull:
@@ -524,6 +523,9 @@ std::span<const Instr> CodeGenerator::FreezeInstructions(
     list.Add(zone, instr);
   }
   return list.ToSpan();
+}
+void CodeGenerator::MarkCurrentLine(const ZonePtr<ASTNode> node) {
+  builder_.current_line(source_file_->LocationOf(node->span().offset).line);
 }
 }  // namespace runtime
 }  // namespace lang

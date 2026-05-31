@@ -65,10 +65,8 @@ class Runtime {
 
   Value LookupGlobal(std::string_view name);
 
-  ZonePtr<CodeObject> CreateCodeObject(
-      const std::span<const Instr>& instructions,
-      const std::span<const ConstantDesc>& constants, uint32_t arg_count,
-      uint32_t max_stack, uint32_t max_locals);
+  template <typename... Args>
+  ZonePtr<CodeObject> CreateCodeObject(Args... args);
 
   // TODO: ZonePtr<...> them
   void RegisterFunction(GCPtr<FunctionObject> function);
@@ -87,6 +85,13 @@ class Runtime {
   ShapeTree shapes_;
   std::unique_ptr<Builtins> builtins_;
 };
+
+template <typename... Args>
+ZonePtr<CodeObject> Runtime::CreateCodeObject(Args... args) {
+  const auto code_object = zone_->New<CodeObject>(std::forward<Args>(args)...);
+  code_objects.push_back(code_object);
+  return code_object;
+}
 
 }  // namespace runtime
 }  // namespace lang

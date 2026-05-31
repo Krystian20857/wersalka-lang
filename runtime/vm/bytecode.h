@@ -12,6 +12,7 @@ namespace lang {
 namespace runtime {
 
 class BytecodeBuilder;
+struct CodeObject;
 
 // clang-format off
 enum class Opcode : uint8_t {
@@ -56,6 +57,16 @@ struct Instr {
   uint32_t c2;
 };
 
+struct DebugInfo {
+  int line_number;
+};
+
+struct TryCatchBlock {
+  int begin_bci;
+  int end_bci;
+  int handler_bci;
+};
+
 struct ConstantDesc {
   static ConstantDesc CreateUInt(uint64_t value);
   static ConstantDesc CreateNull();
@@ -90,7 +101,9 @@ class BytecodeBuilder {
       : zone_(zone),
         instructions_(zone, 128),
         labels_(zone, 32),
-        constants_(zone, 32) {}
+        constants_(zone, 32),
+        debug_info_(zone, 32),
+        current_line_(-1) {}
 
   Label NewLabel();
   void BindLabel(Label label);
@@ -109,6 +122,9 @@ class BytecodeBuilder {
 
   const ZoneList<Instr>& instructions() const { return instructions_; }
   const ZoneList<ConstantDesc>& constants() const { return constants_; }
+  const ZoneList<DebugInfo>& debug_info() const { return debug_info_; }
+
+  void current_line(const int line) { current_line_ = line; }
 
  private:
   struct LabelState {
@@ -129,24 +145,26 @@ class BytecodeBuilder {
 
   // TODO: introduce constant pool here
   ZoneList<ConstantDesc> constants_;
+  ZoneList<DebugInfo> debug_info_;
+  int current_line_;
 };
 
 class BytecodeDisassembler {
  public:
-  BytecodeDisassembler(const std::span<const Instr>& instructions,
-                       const std::span<const ConstantDesc>& constants)
-      : instructions_(instructions), constants_(constants) {}
+  explicit BytecodeDisassembler(const ZonePtr<CodeObject> code_object,
+                                const int display_lines)
+      : code_object_(code_object), display_lines_(display_lines) {}
 
   void Disassemble(std::ostream& stream) const;
   std::string FormatConstant(const ConstantDesc& constant) const;
 
  private:
-  std::span<const Instr> instructions_;
-  std::span<const ConstantDesc> constants_;
+  ZonePtr<CodeObject> code_object_;
+  bool display_lines_;
 };
 
 int ComputeMaxStackDepth(std::span<const Instr> instructions,
-                      std::span<const ConstantDesc> constants);
+                         std::span<const ConstantDesc> constants);
 
 }  // namespace runtime
 }  // namespace lang

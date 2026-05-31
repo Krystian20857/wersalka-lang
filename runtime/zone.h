@@ -5,10 +5,9 @@
 #ifndef WERSALKALANG_ZONE_H
 #define WERSALKALANG_ZONE_H
 
-#include "absl/container/flat_hash_map.h"
-
 #include <memory_resource>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 
 namespace wersalka {
@@ -28,7 +27,7 @@ class Zone {
   ZoneStr InternString(std::string_view view);
 
   template <typename T>
-  std::span<const T> CopyArray(std::span<const T> span);
+  std::span<T> CopyArray(std::span<const T> span);
 
   template <typename T>
   T* InternReference(const T& ref);
@@ -85,9 +84,10 @@ class ZoneList {
 
   T& Back() const;
   void PopBack();
+  void Reserve(Zone* zone, int size);
 
   std::vector<T> ToVector();
-  std::span<T> ToSpan();
+  std::span<const T> ToSpan() const;
 
  private:
   static constexpr auto kDefaultCapacity = 16;
@@ -117,16 +117,16 @@ T* Zone::NewBuffer(const std::size_t size) {
 }
 
 template <typename T>
-std::span<const T> Zone::CopyArray(std::span<const T> span) {
+std::span<T> Zone::CopyArray(std::span<const T> span) {
   static_assert(
       std::is_trivially_destructible_v<T>,
       "Usage of `Zone.CopyArray` require trivially destructible type");
   if (span.empty()) {
-    return std::span<T>{nullptr, 0};
+    return std::span<T>{};
   }
 
   const auto ptr = NewBuffer<T>(span.size());
-  std::copy(span.begin(), span.end(), ptr);
+  std::uninitialized_copy(span.begin(), span.end(), ptr);
   return std::span{ptr, span.size()};
 }
 
@@ -180,13 +180,25 @@ template <typename T>
 void ZoneList<T>::PopBack() {
   size_--;
 }
+template <typename T>
+void ZoneList<T>::Reserve(Zone* zone, int size) {
+  if (elements_ == nullptr) {
+    elements_ = zone->NewBuffer<T>(size);
+    capacity_ = size;
+  } else {
+    auto* new_elements = zone->NewBuffer<T>(size);
+    std::memcpy(new_elements, elements_, capacity_ * sizeof(T));
+    capacity_ = size;
+    elements_ = new_elements;
+  }
+}
 
 template <typename T>
 std::vector<T> ZoneList<T>::ToVector() {
   return std::vector<T>{begin(), end()};
 }
 template <typename T>
-std::span<T> ZoneList<T>::ToSpan() {
+std::span<const T> ZoneList<T>::ToSpan() const {
   return std::span{elements_, static_cast<std::size_t>(size_)};
 }
 

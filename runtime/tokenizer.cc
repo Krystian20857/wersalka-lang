@@ -698,7 +698,7 @@ bool Tokenizer::TryConsumeTemplateSegment(const bool multiline) {
       }
       if (!kEscapes.contains(c)) {
         diagnostic_->Report(
-            Diagnostic::Error("Illegal escape")
+            Diagnostic::Error(source_file_, "Illegal escape")
                 .WithLabel(TextSpan(pos_, 1),
                            absl::StrFormat("escape `%c` doesn't exists", c)));
         has_error_ = true;

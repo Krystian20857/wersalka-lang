@@ -18,36 +18,37 @@ namespace runtime {
 
 class CodeGenerator {
  public:
-  explicit CodeGenerator(Runtime* runtime, DiagnosticReporter* reporter)
-      : runtime_(runtime), reporter_(reporter) {}
+  explicit CodeGenerator(Runtime* runtime, DiagnosticReporter* reporter,
+                         Zone* zone, const ZonePtr<SourceFile> source_file)
+      : runtime_(runtime),
+        reporter_(reporter),
+        zone_(zone),
+        source_file_(source_file),
+        builder_(zone) {}
 
   ZonePtr<CodeObject> CreateCodeObject(ZonePtr<ASTFunctionDecl> ast_func);
 
  private:
-  void CompileStmt(Zone& zone, BytecodeBuilder& builder, LocalsTable& locals,
-                   ZonePtr<ASTStmt> stmt);
-  void CompileExpr(Zone& zone, BytecodeBuilder& builder, LocalsTable& locals,
-                   ZonePtr<ASTExpr> expr);
-  void CompileBinaryExpr(Zone& zone, BytecodeBuilder& builder,
-                         LocalsTable& locals, ZonePtr<ASTBinaryExpr> expr);
-  void CompileUnaryExpr(Zone& zone, BytecodeBuilder& builder,
-                        LocalsTable& locals, ZonePtr<ASTUnaryExpr> expr);
-  void CompileAssignExpr(Zone& zone, BytecodeBuilder& builder,
-                         LocalsTable& locals, ZonePtr<ASTAssignExpr> expr);
-  void CompileTemplateExpr(Zone& zone, BytecodeBuilder& builder,
-                           LocalsTable& locals, ZonePtr<ASTTemplateExpr> expr);
-  void CompileLValue(Zone& zone, BytecodeBuilder& builder, LocalsTable& locals,
-                     ZonePtr<ASTExpr> target);
-  void CompileRValue(Zone& zone, BytecodeBuilder& builder, LocalsTable& locals,
-                     ZonePtr<ASTExpr> value);
-  ConstantDesc CompileConstant(BytecodeBuilder& builder, ZonePtr<Token> token);
+  void CompileStmt(LocalsTable& locals, ZonePtr<ASTStmt> stmt);
+  void CompileExpr(LocalsTable& locals, ZonePtr<ASTExpr> expr);
+  void CompileBinaryExpr(LocalsTable& locals, ZonePtr<ASTBinaryExpr> expr);
+  void CompileUnaryExpr(LocalsTable& locals, ZonePtr<ASTUnaryExpr> expr);
+  void CompileAssignExpr(LocalsTable& locals, ZonePtr<ASTAssignExpr> expr);
+  void CompileTemplateExpr(LocalsTable& locals, ZonePtr<ASTTemplateExpr> expr);
+  void CompileLValue(LocalsTable& locals, ZonePtr<ASTExpr> target);
+  void CompileRValue(LocalsTable& locals, ZonePtr<ASTExpr> value);
+  ConstantDesc CompileConstant(ZonePtr<Token> token);
   std::span<const ConstantDesc> FreezeConstants(Zone* zone,
                                                 const BytecodeBuilder& builder);
   std::span<const Instr> FreezeInstructions(Zone* zone,
                                             const BytecodeBuilder& builder);
+  void MarkCurrentLine(ZonePtr<ASTNode> node);
 
   Runtime* runtime_;
   DiagnosticReporter* reporter_;
+  Zone* zone_;
+  ZonePtr<SourceFile> source_file_;
+  BytecodeBuilder builder_;
 };
 
 }  // namespace runtime

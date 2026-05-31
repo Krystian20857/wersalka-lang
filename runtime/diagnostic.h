@@ -22,14 +22,15 @@ struct DiagnosticLabel {
 };
 
 struct Diagnostic {
-  Diagnostic(const Severity severity, const std::string& message)
-      : severity(severity), message(message) {}
+  Diagnostic(const ZonePtr<SourceFile> source_file, const Severity severity,
+             const std::string& message)
+      : source_file(source_file), severity(severity), message(message) {}
 
-  static Diagnostic Error(const std::string& message) {
-    return Diagnostic(Severity::kError, message);
+  static Diagnostic Error(const ZonePtr<SourceFile> source_file, const std::string& message) {
+    return Diagnostic(source_file, Severity::kError, message);
   }
-  static Diagnostic Warn(const std::string& message) {
-    return Diagnostic(Severity::kWarn, message);
+  static Diagnostic Warn(const ZonePtr<SourceFile> source_file, const std::string& message) {
+    return Diagnostic(source_file, Severity::kWarn, message);
   }
 
   // TODO: rename case
@@ -39,15 +40,16 @@ struct Diagnostic {
   }
 
   Diagnostic& WithLabel(std::string msg) {
-    notes.emplace_back(Severity::kNote, msg);
+    notes.emplace_back(source_file, Severity::kNote, msg);
     return *this;
   }
 
   Diagnostic& WithHelp(std::string msg) {
-    notes.emplace_back(Severity::kHelp, msg);
+    notes.emplace_back(source_file, Severity::kHelp, msg);
     return *this;
   }
 
+  ZonePtr<SourceFile> source_file;
   Severity severity;
   std::string message;
   std::vector<DiagnosticLabel> labels;
@@ -58,7 +60,7 @@ class DiagnosticReporter {
  public:
   void Report(const Diagnostic& diagnostic);
   bool HasError() const { return error_count_ > 0; }
-  const std::vector<Diagnostic>& diagnostics() const{ return diagnostics_; }
+  const std::vector<Diagnostic>& diagnostics() const { return diagnostics_; }
 
  private:
   std::vector<Diagnostic> diagnostics_;

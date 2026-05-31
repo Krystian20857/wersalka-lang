@@ -515,7 +515,7 @@ ZonePtr<Token> Parser::Expect(const TokenSet& tokens) {
     return Next();
   }
   reporter_->Report(
-      Diagnostic::Error("Unexpected token")
+      Diagnostic::Error(source_file_, "Unexpected token")
           .WithLabel(Peek()->span,
                      absl::StrFormat("Got `%s` expected %s",
                                      GetTokenMnemonic(Peek()->kind),

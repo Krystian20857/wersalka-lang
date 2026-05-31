@@ -5,6 +5,7 @@
 #include "bytecode.h"
 
 #include "absl/strings/str_format.h"
+#include "runtime/vm/code_object.h"
 
 namespace wersalka {
 namespace lang {
@@ -109,6 +110,7 @@ int BytecodeBuilder::Emit(const Opcode opcode, const uint16_t c1,
                           const uint32_t c2) {
   const auto bci = current_bci();
   instructions_.Add(zone_, Instr{opcode, c1, c2});
+  debug_info_.Add(zone_, DebugInfo{current_line_});
   return bci;
 }
 int BytecodeBuilder::EmitVarGlobal(Opcode opcode, ZoneStr symbol_name) {
@@ -148,14 +150,22 @@ int BytecodeBuilder::AddConstant(ConstantDesc desc) {
   return id;
 }
 void BytecodeDisassembler::Disassemble(std::ostream& stream) const {
-  for (auto bci = 0; bci < instructions_.size(); ++bci) {
-    const auto instr = instructions_[bci];
+  for (auto bci = 0; bci < code_object_->instructions.size(); ++bci) {
+    const auto instr = code_object_->instructions[bci];
     const auto info = GetOpcodeInfo(instr.op);
-    stream << absl::StrFormat("\t%-6d %s", bci, info->mnemonic);
+    if (display_lines_) {
+      stream << absl::StrFormat("\t%-6d %-6d %s", bci,
+                                code_object_->debug_info[bci].line_number,
+                                info->mnemonic);
+    } else {
+      stream << absl::StrFormat("\t%-6d %s", bci, info->mnemonic);
+    }
     switch (instr.op) {
       case Opcode::kPushConst: {
         stream << " "
-               << absl::StrFormat("`%s`", FormatConstant(constants_[instr.c2]));
+               << absl::StrFormat(
+                      "`%s`",
+                      FormatConstant(code_object_->constants[instr.c2]));
         break;
       }
       case Opcode::kLoadLocal:
@@ -166,7 +176,9 @@ void BytecodeDisassembler::Disassemble(std::ostream& stream) const {
       case Opcode::kLoadGlobal:
       case Opcode::kStoreGlobal: {
         stream << " "
-               << absl::StrFormat("`%s`", FormatConstant(constants_[instr.c2]));
+               << absl::StrFormat(
+                      "`%s`",
+                      FormatConstant(code_object_->constants[instr.c2]));
         break;
       }
       case Opcode::kJmp:
