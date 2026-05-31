@@ -49,6 +49,7 @@ enum class TokenKind {
 
   // keywords
   kVar, kIf, kWhile, kElse, kIn, kFor, kFunc, kReturn, kNew,
+  kTry, kCatch, kFinally, kThrow,
 
   kReserved
 };

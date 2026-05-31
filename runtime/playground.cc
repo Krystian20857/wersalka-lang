@@ -4,6 +4,8 @@
 
 #include <iostream>
 
+#include "absl/debugging/failure_signal_handler.h"
+#include "absl/debugging/symbolize.h"
 #include "absl/strings/str_format.h"
 #include "runtime/codegen.h"
 #include "runtime/diagnostic.h"
@@ -18,26 +20,41 @@ namespace runtime {
 int Main() {
   const auto source = R"(
 
-func main() {
-  var bytes_to_mb = 1024 * 1024;
-  var n = 0;
-  while (true) {
-    var obj = new {};
-    obj.x = 1;
-    obj.y = 2;
-    obj.z = 3;
+func f2() {
+  try {
+    var ex = new {};
+    ex.message = "ERROR!!!";
+    throw ex;
+  } catch (var e) {
+    print("Error message: {e.message}");
+    print("Error cause: {e.cause}");
+    print("Stacktrace: {e.stacktrace}");
 
-    var array = new [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-
-    if (n % 100000 == 0) {
-      var stats = __gc_stats();
-      print("""Allocated {cast(stats.allocated_bytes, "float") / bytes_to_mb}mb
-      Alive {cast(stats.alive_bytes, "float") / bytes_to_mb}mb""");
+    var n = 0;
+    while (n < len(e.stacktrace)) {
+      var frame = e.stacktrace[n];
+      print("\t{frame.function_name} - {frame.line}");
+      n += 1;
     }
-    n += 1;
   }
+}
 
-  print("x, y, z = {obj.x}, {obj.y}, {obj.z}");
+func f1() {
+  try {
+    try {
+      f2();
+      return 1337;
+    } finally {
+      print("finally inner!!");
+    }
+  } finally {
+    print("finally outer!!");
+  }
+}
+
+func main() {
+  var r = f1();
+  print("r = {r}");
 }
 
 )";
@@ -61,12 +78,13 @@ func main() {
                   << std::endl;
         return Value::CreateNull();
       });
-  Zone codegen_zone;
-  CodeGenerator codegen(&runtime, &reporter, &codegen_zone, source_file.get());
 
   if (Is<ASTCompileUnit>(ast)) {
     const auto compile_unit = Cast<ASTCompileUnit>(ast);
     for (const auto function : compile_unit->functions) {
+      Zone codegen_zone;
+      CodeGenerator codegen(&runtime, &reporter, &codegen_zone,
+                            source_file.get());
       const auto object = codegen.CreateCodeObject(function);
       std::cout << absl::StrFormat("MAX_STACK %d\nMAX_LOCALS %d\n",
                                    object->max_stack, object->max_locals);
@@ -105,4 +123,8 @@ func main() {
 }  // namespace lang
 }  // namespace wersalka
 
-int main() { wersalka::lang::runtime::Main(); }
+int main(int argc, char** argv) {
+  absl::InitializeSymbolizer(argv[0]);
+  absl::InstallFailureSignalHandler({});
+  wersalka::lang::runtime::Main();
+}

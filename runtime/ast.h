@@ -19,6 +19,7 @@ struct ASTExpr;
 struct ASTStmt;
 struct ASTBlockStmt;
 struct ASTFunctionDecl;
+struct ASTIdentExpr;
 
 class ASTNode : public ZoneObject {
  public:
@@ -36,6 +37,8 @@ class ASTNode : public ZoneObject {
     kIfStmt,
     kWhileStmt,
     kReturnStmt,
+    kTryStmt,
+    kThrowStmt,
 
     // expressions
     kConstExpr,
@@ -174,6 +177,36 @@ struct ASTReturnStmt : ASTStmt {
 
   explicit ASTReturnStmt(const TextSpan& span, const ZonePtr<ASTExpr> expr)
       : ASTStmt(Kind::kReturnStmt, span), expr(expr) {}
+
+  ZonePtr<ASTExpr> expr;
+};
+
+struct ASTTryStmt : ASTStmt {
+  static constexpr auto kKind = Kind::kTryStmt;
+
+  struct CatchBlock {
+    ZonePtr<ASTStmt> block;
+    ZonePtr<ASTExpr> var_name;
+  };
+
+  explicit ASTTryStmt(const TextSpan& span, const ZonePtr<ASTStmt> try_block,
+                      const ZoneList<CatchBlock> catch_blocks,
+                      const ZonePtrList<ASTStmt> finally_blocks)
+      : ASTStmt(Kind::kTryStmt, span),
+        try_block(try_block),
+        catch_blocks(catch_blocks),
+        finally_blocks(finally_blocks) {}
+
+  ZonePtr<ASTStmt> try_block;
+  ZoneList<CatchBlock> catch_blocks;
+  ZonePtrList<ASTStmt> finally_blocks;
+};
+
+struct ASTThrowStmt : ASTStmt {
+  static constexpr auto kKind = Kind::kThrowStmt;
+
+  explicit ASTThrowStmt(const TextSpan& span, const ZonePtr<ASTExpr> expr)
+      : ASTStmt(Kind::kThrowStmt, span), expr(expr) {}
 
   ZonePtr<ASTExpr> expr;
 };
@@ -360,8 +393,8 @@ struct ASTNewObjectExpr : ASTExpr {
 struct ASTMemberAccessExpr : ASTExpr {
   static constexpr auto kKind = Kind::kMemberAccessExpr;
 
-  explicit ASTMemberAccessExpr(const TextSpan& span, const ZonePtr<ASTExpr> expr,
-                         const ZoneStr field)
+  explicit ASTMemberAccessExpr(const TextSpan& span,
+                               const ZonePtr<ASTExpr> expr, const ZoneStr field)
       : ASTExpr(Kind::kMemberAccessExpr, span), expr(expr), field(field) {}
 
   ZonePtr<ASTExpr> expr;

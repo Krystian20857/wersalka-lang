@@ -24,7 +24,8 @@ class CodeGenerator {
         reporter_(reporter),
         zone_(zone),
         source_file_(source_file),
-        builder_(zone) {}
+        builder_(zone),
+        try_catch_blocks_(zone, 16) {}
 
   ZonePtr<CodeObject> CreateCodeObject(ZonePtr<ASTFunctionDecl> ast_func);
 
@@ -37,6 +38,7 @@ class CodeGenerator {
   void CompileTemplateExpr(LocalsTable& locals, ZonePtr<ASTTemplateExpr> expr);
   void CompileLValue(LocalsTable& locals, ZonePtr<ASTExpr> target);
   void CompileRValue(LocalsTable& locals, ZonePtr<ASTExpr> value);
+  void CompileTryStmt(LocalsTable& locals, ZonePtr<ASTTryStmt> stmt);
   ConstantDesc CompileConstant(ZonePtr<Token> token);
   std::span<const ConstantDesc> FreezeConstants(Zone* zone,
                                                 const BytecodeBuilder& builder);
@@ -49,6 +51,8 @@ class CodeGenerator {
   Zone* zone_;
   ZonePtr<SourceFile> source_file_;
   BytecodeBuilder builder_;
+  ZoneList<TryCatchBlock> try_catch_blocks_;
+  std::vector<std::function<void()>> finally_blocks_;
 };
 
 }  // namespace runtime

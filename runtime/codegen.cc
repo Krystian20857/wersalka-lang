@@ -43,6 +43,7 @@ ZonePtr<CodeObject> CodeGenerator::CreateCodeObject(
   const auto code_object = runtime_->CreateCodeObject(
       instructions, constants,
       rt_zone->CopyArray(builder_.debug_info().ToSpan()),
+      rt_zone->CopyArray(try_catch_blocks_.ToSpan()),
       ast_func->params.size(),                        // arg count
       ComputeMaxStackDepth(instructions, constants),  // max stack TODO
       locals.max_locals());
@@ -123,7 +124,26 @@ void CodeGenerator::CompileStmt(LocalsTable& locals, ZonePtr<ASTStmt> stmt) {
     case ASTNode::Kind::kReturnStmt: {
       const auto return_stmt = Cast<ASTReturnStmt>(stmt);
       CompileExpr(locals, return_stmt->expr);
+      if (!finally_blocks_.empty()) {
+        const auto ret_value = locals.DefineSyntheticVar();
+        builder_.EmitVarLocal(Opcode::kStoreLocal, ret_value);
+        for (auto& finally_block : finally_blocks_) {
+          finally_block();
+        }
+        builder_.EmitVarLocal(Opcode::kLoadLocal, ret_value);
+      }
       builder_.Emit(Opcode::kReturn);
+      break;
+    }
+    case ASTNode::Kind::kTryStmt: {
+      const auto try_stmt = Cast<ASTTryStmt>(stmt);
+      CompileTryStmt(locals, try_stmt);
+      break;
+    }
+    case ASTNode::Kind::kThrowStmt: {
+      const auto throw_stmt = Cast<ASTThrowStmt>(stmt);
+      CompileExpr(locals, throw_stmt->expr);
+      builder_.Emit(Opcode::kThrow);
       break;
     }
     default:
@@ -482,6 +502,86 @@ void CodeGenerator::CompileRValue(LocalsTable& locals, ZonePtr<ASTExpr> value) {
                           "RValue can be only "
                           "local variables or global symbols")
             .WithLabel(value->span(), "non-assignable left expression"));
+  }
+}
+void CodeGenerator::CompileTryStmt(LocalsTable& locals,
+                                   ZonePtr<ASTTryStmt> stmt) {
+  const auto emit_finally = [&] {
+    for (auto finally_block : stmt->finally_blocks) {
+      CompileStmt(locals, finally_block);
+    }
+  };
+
+  if (!stmt->finally_blocks.empty()) {
+    finally_blocks_.push_back(emit_finally);
+  }
+
+  struct CatchRange {
+    int begin_bci;
+    int end_bci;
+  };
+
+  const auto after = builder_.NewLabel();
+
+  // try
+  const auto try_begin_bci = builder_.current_bci();
+  CompileStmt(locals, stmt->try_block);
+  const auto try_end_bci = builder_.current_bci();
+  emit_finally();
+  builder_.EmitJump(Opcode::kJmp, after);
+
+  // catch blocks
+  int first_catch_begin_bci = -1;
+  ZoneList<CatchRange> catch_ranges(zone_);
+  for (const auto& catch_block : stmt->catch_blocks) {
+    const auto catch_begin_bci = builder_.current_bci();
+    if (first_catch_begin_bci < 0) {
+      first_catch_begin_bci = catch_begin_bci;
+    }
+
+    builder_.Emit(Opcode::kPushException);
+    if (catch_block.var_name != nullptr &&
+        catch_block.var_name->kind() == ASTNode::Kind::kIdentExpr) {
+      const auto ident = Cast<ASTIdentExpr>(catch_block.var_name);
+      const auto slot = locals.DefineVar(ident->ident);
+      builder_.EmitVarLocal(Opcode::kStoreLocal, slot);
+    } else {
+      builder_.Emit(Opcode::kPop);
+    }
+    builder_.Emit(Opcode::kClearException);
+
+    CompileStmt(locals, catch_block.block);
+    const auto catch_end_bci = builder_.current_bci();
+    catch_ranges.Add(zone_, CatchRange{catch_begin_bci, catch_end_bci});
+    emit_finally();
+    builder_.EmitJump(Opcode::kJmp, after);
+  }
+
+  // handlers
+  if (first_catch_begin_bci >= 0) {
+    try_catch_blocks_.Add(zone_, TryCatchBlock{try_begin_bci, try_end_bci,
+                                               first_catch_begin_bci});
+  } else {
+    const auto handler_bci = builder_.current_bci();
+    emit_finally();
+    builder_.Emit(Opcode::kRethrow);
+    try_catch_blocks_.Add(
+        zone_, TryCatchBlock{try_begin_bci, try_end_bci, handler_bci});
+  }
+
+  for (auto catch_range : catch_ranges) {
+    const auto handler_bci = builder_.current_bci();
+    emit_finally();
+    builder_.Emit(Opcode::kRethrow);
+    try_catch_blocks_.Add(
+        zone_,
+        TryCatchBlock{catch_range.begin_bci, catch_range.end_bci, handler_bci});
+  }
+
+  builder_.BindLabel(after);
+
+  if (!stmt->finally_blocks.empty()) {
+    finally_blocks_.pop_back();
   }
 }
 ConstantDesc CodeGenerator::CompileConstant(ZonePtr<Token> token) {

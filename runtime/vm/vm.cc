@@ -52,10 +52,47 @@ VMThreadState VMThread::GetThreadState() const { return thread_state_; }
 void VMThread::Unwind(Value exception) {
   // TODO: exception handlers here
   while (frame_count_ > 0) {
+    const auto frame = CurrentFrame();
+    // TODO: bsearch
+    for (const auto try_catch_block : frame->code_obj->try_catch_blocks) {
+      if (try_catch_block.begin_bci <= frame->pc &&
+          frame->pc < try_catch_block.end_bci) {
+        frame->pc = try_catch_block.handler_bci;
+        pending_exception_ = exception;
+        SetThreadState(VMThreadState::kRunning);
+        return;
+      }
+    }
     PopFrame();
   }
   pending_exception_ = exception;
   SetThreadState(VMThreadState::kError);
+}
+void VMThread::CaptureStackTrace() {
+  const auto stacktrace = ArrayObject::New(runtime()->gc(), frame_count_);
+  for (auto n = 1; n <= frame_count_; n++) {
+    const auto& frame = frames_[n];
+    const auto func_name =
+        StringObject::New(runtime()->gc(), frame.func_obj->name());
+    const auto line = frame.code_obj->debug_info[frame.pc].line_number;
+    const auto frame_object = runtime()->builtins()->Shape_Frame.New(
+        {{"function_name", Value::CreateObject(func_name)},
+         {"line", Value::CreateInt(line)},
+         {"bytecode_index", Value::CreateInt(frame.pc)}});
+    stacktrace->GetElements()[n - 1] = Value::CreateObject(frame_object);
+  }
+  if (pending_exception_.IsObject(ObjectKind::kShapedObject)) {
+    const auto field =
+        Value::CreateObject(StringObject::New(runtime()->gc(), "stacktrace"));
+    VMIntrinsics::SetField(this, pending_exception_, field,
+                           Value::CreateObject(stacktrace));
+  }
+}
+
+void VMThread::ThrowException(Value value) {
+  pending_exception_ = value;
+  CaptureStackTrace();
+  Unwind(value);
 }
 
 Value VMInterpreter::Execute(VMThread* thread,
@@ -285,12 +322,12 @@ Value VMInterpreter::Run(VMThread* thread) {
               &native_context, {thread->native_args_buffer_.data(),
                                 static_cast<std::size_t>(arg_count)});
           if (native_context.exception != nullptr) {
-            thread->SetPendingException(*native_context.exception);
+            thread->ThrowException(*native_context.exception);
           } else {
             thread->SetThreadState(VMThreadState::kRunning);
             thread->PushStack(result);
+            frame->pc++;
           }
-          frame->pc++;
         } else {
           // TODO: Exception, not callable
           thread->SetPendingException(Value::CreateNull());
@@ -387,56 +424,38 @@ Value VMInterpreter::Run(VMThread* thread) {
         const auto value = thread->PopStack();
         const auto field = thread->PopStack();
         const auto object = thread->PopStack();
-        const auto is_object =
-            object.IsObject() &&
-            object.GetObject()->kind() == ObjectKind::kShapedObject;
-        if (!is_object) {
-          // TODO: Exception, not object
-          thread->SetPendingException(Value::CreateNull());
-          break;
+        VMIntrinsics::SetField(thread, object, field, value);
+        if (thread->GetThreadState() == VMThreadState::kRunning) {
+          frame->pc++;
         }
-        const auto is_field_string =
-            field.IsObject() &&
-            field.GetObject()->kind() == ObjectKind::kString;
-        if (!is_field_string) {
-          // TODO: Exception, field not string
-          thread->SetPendingException(Value::CreateNull());
-          break;
-        }
-        const auto shaped_object = object.GetObjectUnchecked<ShapedObject>();
-        const auto field_str = field.GetObjectUnchecked<StringObject>();
-        const auto new_shape = runtime_->shaped_tree()->TransitionOf(
-            shaped_object->shape(), Tagged(field_str));
-        shaped_object->TransitionTo(runtime_->gc(), new_shape);
-        shaped_object->GetFields()[new_shape->slot_index()] = value;
-        frame->pc++;
         break;
       }
       case Opcode::kGetField: {
         const auto field = thread->PopStack();
         const auto object = thread->PopStack();
-        const auto is_object =
-            object.IsObject() &&
-            object.GetObject()->kind() == ObjectKind::kShapedObject;
-        if (!is_object) {
-          // TODO: Exception, not object
-          thread->SetPendingException(Value::CreateNull());
-          break;
+        const auto result = VMIntrinsics::GetField(thread, object, field);
+        if (thread->GetThreadState() == VMThreadState::kRunning) {
+          thread->PushStack(result);
+          frame->pc++;
         }
-        const auto is_field_string =
-            field.IsObject() &&
-            field.GetObject()->kind() == ObjectKind::kString;
-        if (!is_field_string) {
-          // TODO: Exception, field not string
-          thread->SetPendingException(Value::CreateNull());
-          break;
-        }
-        const auto shaped_object = object.GetObjectUnchecked<ShapedObject>();
-        const auto field_str = field.GetObjectUnchecked<StringObject>();
-        const int slot = runtime_->shaped_tree()->OffsetOf(
-            shaped_object->shape(), *field_str);
-        thread->PushStack(slot < 0 ? Value::CreateNull()
-                                   : shaped_object->GetFields()[slot]);
+        break;
+      }
+      case Opcode::kThrow: {
+        const auto exception = thread->PopStack();
+        thread->ThrowException(exception);
+        break;
+      }
+      case Opcode::kRethrow: {
+        thread->Unwind(thread->pending_exception_);
+        break;
+      }
+      case Opcode::kPushException: {
+        thread->PushStack(thread->pending_exception_);
+        frame->pc++;
+        break;
+      }
+      case Opcode::kClearException: {
+        thread->pending_exception_ = Value::CreateNull();
         frame->pc++;
         break;
       }
@@ -492,6 +511,54 @@ Value VMInterpreter::MaterializeConstant(ConstantDesc desc) const {
     }
   }
 }
+void VMInterpreter::ThrowRuntimeError(VMThread* thread,
+                                      const std::string_view message) {
+  const auto msg = StringObject::New(runtime_->gc(), message);
+  const auto exc = runtime_->builtins()->Shape_Exception.New({
+      {"message", Value::CreateObject(msg)},
+      {"cause", Value::CreateNull()},
+      {"stacktrace", Value::CreateNull()},
+  });
+  thread->ThrowException(Value::CreateObject(exc));
+}
+
+void VMIntrinsics::SetField(VMThread* thread, const Value object,
+                            const Value field, const Value value) {
+  if (!object.IsObject() ||
+      object.GetObject()->kind() != ObjectKind::kShapedObject) {
+    thread->ThrowException(Value::CreateNull());
+    return;
+  }
+  if (!field.IsObject() || field.GetObject()->kind() != ObjectKind::kString) {
+    thread->ThrowException(Value::CreateNull());
+    return;
+  }
+  const auto shaped = object.GetObjectUnchecked<ShapedObject>();
+  const auto field_str = field.GetObjectUnchecked<StringObject>();
+  const auto new_shape = thread->runtime()->shaped_tree()->TransitionOf(
+      shaped->shape(), Tagged(field_str));
+  shaped->TransitionTo(thread->runtime()->gc(), new_shape);
+  shaped->GetFields()[new_shape->slot_index()] = value;
+}
+
+Value VMIntrinsics::GetField(VMThread* thread, const Value object,
+                             const Value field) {
+  if (!object.IsObject() ||
+      object.GetObject()->kind() != ObjectKind::kShapedObject) {
+    thread->ThrowException(Value::CreateNull());
+    return Value::CreateNull();
+  }
+  if (!field.IsObject() || field.GetObject()->kind() != ObjectKind::kString) {
+    thread->ThrowException(Value::CreateNull());
+    return Value::CreateNull();
+  }
+  const auto shaped = object.GetObjectUnchecked<ShapedObject>();
+  const auto field_str = field.GetObjectUnchecked<StringObject>();
+  const int slot =
+      thread->runtime()->shaped_tree()->OffsetOf(shaped->shape(), *field_str);
+  return slot < 0 ? Value::CreateNull() : shaped->GetFields()[slot];
+}
+
 std::optional<int64_t> VMIntrinsics::CoerceToInt(Value value) {
   // TODO: string -> int parse
   if (value.IsInt()) {
@@ -606,6 +673,8 @@ std::string VMIntrinsics::ToString(Runtime* runtime, Value value) {
         const auto string_obj = static_cast<StringObject*>(obj);
         return std::string(string_obj->GetCharsPtr(), string_obj->length());
       }
+      case ObjectKind::kArray:
+        return absl::StrFormat("<array>@%d", IdentityHash(runtime, obj));
       default:
         return absl::StrFormat("<object>@%d", IdentityHash(runtime, obj));
     }

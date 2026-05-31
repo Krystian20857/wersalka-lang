@@ -24,8 +24,9 @@ constexpr auto kExprBeginTokens =
     TokenSet{TokenKind::kIdent, TokenKind::kOpenParen,
              TokenKind::kTemplateBegin};
 constexpr auto kStmtBeginTokens =
-    TokenSet{TokenKind::kVar, TokenKind::kOpenBrace, TokenKind::kIf,
-             TokenKind::kWhile, TokenKind::kReturn} |
+    TokenSet{TokenKind::kVar,   TokenKind::kOpenBrace, TokenKind::kIf,
+             TokenKind::kWhile, TokenKind::kReturn,    TokenKind::kTry,
+             TokenKind::kThrow} |
     kExprBeginTokens;
 constexpr auto kTopLevelBeginTokens =
     TokenSet{TokenKind::kFunc} | kStmtBeginTokens;
@@ -413,6 +414,12 @@ ZonePtr<ASTStmt> Parser::ParseStmt() {
   if (At(TokenKind::kReturn)) {
     return ParseReturnStmt();
   }
+  if (At(TokenKind::kTry)) {
+    return ParseTryStmt();
+  }
+  if (At(TokenKind::kThrow)) {
+    return ParseThrowStmt();
+  }
 
   ABSL_UNREACHABLE();
 }
@@ -483,6 +490,42 @@ ZonePtr<ASTStmt> Parser::ParseReturnStmt() {
   const auto expr = ParseExpr(Precedence::kNone);
   Expect(TokenKind::kSemi);
   return zone_->New<ASTReturnStmt>(SpanEnd(mark), expr);
+}
+ZonePtr<ASTStmt> Parser::ParseTryStmt() {
+  const auto mark = SpanBegin();
+  Expect(TokenKind::kTry);
+  const auto try_block = ParseBlockStmt();
+  ZoneList<ASTTryStmt::CatchBlock> catch_blocks(zone_);
+  ZonePtrList<ASTStmt> finally_blocks(zone_);
+  while (!At(TokenKind::kEnd)) {
+    if (At(TokenKind::kCatch)) {
+      Next();
+      ZonePtr<ASTExpr> var_name;  // TODO: make optional
+      if (TryConsume(TokenKind::kOpenParen)) {
+        Expect(TokenKind::kVar);
+        var_name = ParseIdentExpr();
+        Expect(TokenKind::kCloseParen);
+      } else {
+        var_name = nullptr;
+      }
+      const auto block = ParseBlockStmt();
+      catch_blocks.Add(zone_, ASTTryStmt::CatchBlock{block, var_name});
+    } else if (At(TokenKind::kFinally)) {
+      Next();
+      finally_blocks.Add(zone_, ParseBlockStmt());
+    } else {
+      break;
+    }
+  }
+  return zone_->New<ASTTryStmt>(SpanEnd(mark), try_block, catch_blocks,
+                                finally_blocks);
+}
+ZonePtr<ASTStmt> Parser::ParseThrowStmt() {
+  const auto mark = SpanBegin();
+  Expect(TokenKind::kThrow);
+  const auto expr = ParseExpr(Precedence::kNone);
+  Expect(TokenKind::kSemi);
+  return zone_->New<ASTThrowStmt>(SpanEnd(mark), expr);
 }
 ZonePtr<Token> Parser::Peek(int offset) {
   while (pos_ + offset >= tokens_.size()) {

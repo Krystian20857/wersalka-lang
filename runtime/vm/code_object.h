@@ -18,11 +18,13 @@ struct CodeObject : ZoneObject {
   explicit CodeObject(const std::span<const Instr>& instructions,
                       const std::span<const ConstantDesc>& constants,
                       const std::span<const DebugInfo>& debug_info,
+                      const std::span<const TryCatchBlock>& try_catch_blocks,
                       const uint32_t arg_count, const uint32_t max_stack,
                       const uint32_t max_locals)
       : instructions(instructions),
         constants(constants),
         debug_info(debug_info),
+        try_catch_blocks(try_catch_blocks),
         arg_count(arg_count),
         max_stack(max_stack),
         max_locals(max_locals) {}
@@ -30,6 +32,8 @@ struct CodeObject : ZoneObject {
   std::span<const Instr> instructions;
   std::span<const ConstantDesc> constants;
   std::span<const DebugInfo> debug_info;
+  // sorted by begin bci
+  std::span<const TryCatchBlock> try_catch_blocks;
 
   uint32_t arg_count;
   uint32_t max_stack;

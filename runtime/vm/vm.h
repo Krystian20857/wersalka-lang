@@ -23,14 +23,14 @@ enum class VMThreadState { kRunning, kNative, kError, kReturned };
 // call conv:
 //  [callee] [arg0]...[argX] [local0]...[localX] [operand0]...[operandX]
 struct VMFrame {
-  VMFrame(CodeObject* code_obj, Value func_obj, Value* locals)
+  VMFrame(CodeObject* code_obj, Tagged<FunctionObject> func_obj, Value* locals)
       : code_obj(code_obj), func_obj(func_obj), pc(0), locals(locals) {}
 
   // keep VMThread::frames_ happy
   VMFrame() : VMFrame(nullptr, Value::CreateNull(), nullptr) {}
 
   CodeObject* code_obj;
-  Value func_obj;
+  Tagged<FunctionObject> func_obj;
   uint32_t pc;
   Value* locals;
 };
@@ -72,6 +72,8 @@ class VMThread {
   VMThreadState GetThreadState() const;
 
   void Unwind(Value exception);
+  void CaptureStackTrace();
+  void ThrowException(Value value);
 
  private:
   Runtime* runtime_;
@@ -107,6 +109,7 @@ class VMInterpreter {
                     int arg_count);
 
   Value MaterializeConstant(ConstantDesc desc) const;
+  void ThrowRuntimeError(VMThread* thread, std::string_view message);
 
   template <typename Op>
   static void ExecuteBinIntOp(VMThread* thread, VMFrame* frame, Op op);
@@ -130,6 +133,9 @@ class VMIntrinsics {
   static Value Negate(VMThread* thread, Value value);
   static std::string ToString(Runtime* runtime, Value value);
   static int IdentityHash(Runtime* runtime, Object* object);
+
+  static void SetField(VMThread* thread, Value object, Value field, Value value);
+  static Value GetField(VMThread* thread, Value object, Value field);
 
   // lovely templates
   template <typename Op>

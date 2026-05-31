@@ -72,7 +72,7 @@ void GCVisitor::WalkRoots(VMThread* thread) {
   // frame walk
   for (auto n = 1; n <= thread->frame_count_; n++) {
     auto& frame = thread->frames_[n];
-    WalkObject(&frame.func_obj);
+    WalkObject(&frame.func_obj.AsValue());
 
     // TODO: is it correct?
     //  I guess for fully correct and performant stack walk I would have to

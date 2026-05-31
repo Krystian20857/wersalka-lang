@@ -38,6 +38,8 @@ enum class Opcode : uint8_t {
   kNewArray, kStoreArray, kLoadArray,
   kNewObject, kSetField, kGetField,
 
+  kThrow, kRethrow, kPushException, kClearException,
+
   kReserved
 };
 // clang-format on

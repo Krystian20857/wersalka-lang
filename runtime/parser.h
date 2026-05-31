@@ -95,6 +95,8 @@ class Parser final {
   ZonePtr<ASTStmt> ParseWhileStmt();
   ZonePtr<ASTStmt> ParseExprStmt();
   ZonePtr<ASTStmt> ParseReturnStmt();
+  ZonePtr<ASTStmt> ParseTryStmt();
+  ZonePtr<ASTStmt> ParseThrowStmt();
 
   ZonePtr<Token> Peek(int offset = 0);
   ZonePtr<Token> Next();

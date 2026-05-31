@@ -161,6 +161,29 @@ static void DumpNode(const ASTNode* node, std::string& out, int depth) {
       DumpNode(n->block, out, depth + 1);
       break;
     }
+    case ASTNode::Kind::kTryStmt: {
+      const auto* n = static_cast<const ASTTryStmt*>(node);
+      absl::StrAppendFormat(&out, "%sTryStmt\n", indent);
+      DumpNode(n->try_block, out, depth + 1);
+      for (const auto& catch_block : n->catch_blocks) {
+        absl::StrAppendFormat(&out, "%s  catch\n", indent);
+        if (catch_block.var_name != nullptr) {
+          DumpNode(catch_block.var_name, out, depth + 1);
+        }
+        DumpNode(catch_block.block, out, depth + 1);
+      }
+      for (const auto finally_block : n->finally_blocks) {
+        absl::StrAppendFormat(&out, "%s  finally\n", indent);
+        DumpNode(finally_block, out, depth + 1);
+      }
+      break;
+    }
+    case ASTNode::Kind::kThrowStmt: {
+      const auto* n = static_cast<const ASTThrowStmt*>(node);
+      absl::StrAppendFormat(&out, "%sThrowStmt\n", indent);
+      DumpNode(n->expr, out, depth + 1);
+      break;
+    }
     case ASTNode::Kind::kConstExpr: {
       const auto* n = static_cast<const ASTConstExpr*>(node);
       switch (n->value->value_kind) {
