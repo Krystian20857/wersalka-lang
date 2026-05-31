@@ -103,7 +103,7 @@ Value VMInterpreter::Run(VMThread* thread) {
       }
       case Opcode::kLoadGlobal: {
         const auto name = code_object->constants[instr.c2];
-        CHECK(name.kind == ConstantDesc::Kind::kString); // TODO: Exception
+        CHECK(name.kind == ConstantDesc::Kind::kString);  // TODO: Exception
         if (auto global = thread->globals_.find(name.str_v);
             global != thread->globals_.end()) {
           thread->PushStack(global->second);
@@ -179,15 +179,18 @@ Value VMInterpreter::Run(VMThread* thread) {
         break;
       }
       case Opcode::kSub: {
-        ExecuteBinIntOp(thread, frame, std::minus<uint64_t>{});
+        ExecuteWildcardBinOp(thread, frame,
+                             [](auto a, auto b) { return a + b; });
         break;
       }
       case Opcode::kMul: {
-        ExecuteBinIntOp(thread, frame, std::multiplies<uint64_t>{});
+        ExecuteWildcardBinOp(thread, frame,
+                             [](auto a, auto b) { return a * b; });
         break;
       }
       case Opcode::kDiv: {
-        ExecuteBinIntOp(thread, frame, std::divides<uint64_t>{});
+        ExecuteWildcardBinOp(thread, frame,
+                             [](auto a, auto b) { return a / b; });
         break;
       }
       case Opcode::kMod: {
@@ -474,10 +477,8 @@ Value VMInterpreter::MaterializeConstant(ConstantDesc desc) const {
       return Value::CreateInt(desc.int_v);
     case ConstantDesc::Kind::kUInt:
       return Value::CreateInt(desc.uint_v);
-    case ConstantDesc::Kind::kFloat: {
-      // TODO: implement
-      ABSL_UNREACHABLE();
-    }
+    case ConstantDesc::Kind::kFloat:
+      return Value::CreateFloat(desc.float_v);
     case ConstantDesc::Kind::kBool:
       return Value::CreateBool(desc.bool_v);
     case ConstantDesc::Kind::kNull:
@@ -490,6 +491,7 @@ Value VMInterpreter::MaterializeConstant(ConstantDesc desc) const {
   }
 }
 std::optional<int64_t> VMIntrinsics::CoerceToInt(Value value) {
+  // TODO: string -> int parse
   if (value.IsInt()) {
     return value.GetIntValue();
   }
@@ -501,7 +503,19 @@ std::optional<int64_t> VMIntrinsics::CoerceToInt(Value value) {
   }
   return std::nullopt;
 }
+std::optional<float> VMIntrinsics::CoerceToFloat(Value value) {
+  // TODO: string -> float parse
+  if (value.IsFloat()) {
+    return value.GetFloatValue();
+  }
+  if (value.IsInt()) {
+    return static_cast<float>(value.GetIntValue());
+  }
+  return CoerceToInt(value).transform(
+      [](const auto it) { return static_cast<float>(it); });
+}
 std::optional<int64_t> VMIntrinsics::CoerceToBool(Value value) {
+  // TODO: string -> bool parse
   if (value.IsBool()) {
     return value.GetBoolValue();
   }
@@ -513,10 +527,9 @@ std::optional<int64_t> VMIntrinsics::CoerceToBool(Value value) {
   }
   return std::nullopt;
 }
-GCPtr<StringObject> VMIntrinsics::CoerceToString(VMThread* thread,
+GCPtr<StringObject> VMIntrinsics::CoerceToString(Runtime* runtime,
                                                  const Value value) {
-  return StringObject::New(thread->runtime()->gc(),
-                           ToString(thread->runtime(), value));
+  return StringObject::New(runtime->gc(), ToString(runtime, value));
 }
 bool VMIntrinsics::IsTruthful(Value value) {
   if (value.IsNull()) {
@@ -537,13 +550,19 @@ Value VMIntrinsics::Add(VMThread* thread, Value left, Value right) {
       (right.IsObject() && right.GetObject()->kind() == ObjectKind::kString);
   if (do_concat) {
     HandleScope scope(thread);
-    const auto left_string = scope.Alloc(CoerceToString(thread, left));
-    const auto right_string = scope.Alloc(CoerceToString(thread, right));
+    const auto left_string =
+        scope.Alloc(CoerceToString(thread->runtime(), left));
+    const auto right_string =
+        scope.Alloc(CoerceToString(thread->runtime(), right));
     return Value::CreateObject(StringObject::Concat(thread->runtime()->gc(),
                                                     left_string, right_string));
   }
-  // int add
-  return BinIntOp(thread, left, right, std::plus<int64_t>{});
+  if (right.IsFloat() || left.IsFloat()) {
+    return BinFloatOp(thread, left, right,
+                      [](auto a, auto b) { return a + b; });
+  } else {
+    return BinIntOp(thread, left, right, [](auto a, auto b) { return a + b; });
+  }
 }
 Value VMIntrinsics::Negate(VMThread* thread, Value value) {
   const auto value_coerced = CoerceToInt(value);
@@ -564,6 +583,9 @@ std::string VMIntrinsics::ToString(Runtime* runtime, Value value) {
   }
   if (value.IsBool()) {
     return std::to_string(value.GetBoolValue());
+  }
+  if (value.IsFloat()) {
+    return std::to_string(value.GetFloatValue());
   }
   if (value.IsObject()) {
     const auto obj = value.GetObject();

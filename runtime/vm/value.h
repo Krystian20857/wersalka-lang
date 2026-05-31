@@ -22,6 +22,7 @@ struct ValueTags {
   constexpr static Raw kIntTag = 0b000;
   constexpr static Raw kObjectTag = 0b001;
   constexpr static Raw kSpecialTag = 0b010;  // true, false, null, etc.
+  constexpr static Raw kFloatTag = 0b011;
 
   constexpr static Raw kNullPayload = 0b00000;
   constexpr static Raw kTruePayload = 0b11000;
@@ -34,19 +35,24 @@ class Value {
   //  - 3 tag bits, ValueTag
   using Raw = uint64_t;
 
-  Value() : Value(ValueTags::kSpecialTag | ValueTags::kNullPayload) {}
+  constexpr Value() : Value(ValueTags::kSpecialTag | ValueTags::kNullPayload) {}
 
-  static Value CreateInt(const int64_t value) {
+  static constexpr Value CreateInt(const int64_t value) {
     CHECK(value >= ValueTags::kIntMinValue && value <= ValueTags::kIntMaxValue);
     return Value{(value << 3) | ValueTags::kIntTag};
   }
 
-  static Value CreateBool(const bool value) {
+  static constexpr Value CreateBool(const bool value) {
     if (value) {
       return Value{ValueTags::kSpecialTag | ValueTags::kTruePayload};
     } else {
       return Value{ValueTags::kSpecialTag | ValueTags::kFalsePayload};
     }
+  }
+
+  static constexpr Value CreateFloat(const float value) {
+    const auto bits = std::bit_cast<uint32_t, float>(value);
+    return Value{ValueTags::kFloatTag | (static_cast<uint64_t>(bits) << 3)};
   }
 
   // TODO: maybe use concept here
@@ -61,27 +67,36 @@ class Value {
     return Value{ptr | ValueTags::kObjectTag};
   }
 
-  static Value CreateNull() { return Value{}; }
+  static constexpr Value CreateNull() { return Value{}; }
 
-  Raw GetRawValue() const { return bits_; }
-  Raw GetTagValue() const { return bits_ & ValueTags::kTagMask; }
-  int64_t GetIntValue() const {
+  constexpr Raw GetRawValue() const { return bits_; }
+  constexpr Raw GetTagValue() const { return bits_ & ValueTags::kTagMask; }
+  constexpr int64_t GetIntValue() const {
     CHECK(IsInt());
-    return bits_ >> 3;
+    return static_cast<int64_t>(bits_) >> 3;
   }
-  bool GetBoolValue() const {
+  constexpr bool GetBoolValue() const {
     CHECK(IsBool());
     return bits_ == (ValueTags::kSpecialTag | ValueTags::kTruePayload);
   }
+  constexpr float GetFloatValue() const {
+    CHECK(IsFloat());
+    return std::bit_cast<float, uint32_t>(static_cast<uint32_t>(bits_ >> 3));
+  }
 
-  bool IsInt() const { return GetTagValue() == ValueTags::kIntTag; }
-  bool IsObject() const { return GetTagValue() == ValueTags::kObjectTag; }
-  bool IsNull() const {
+  constexpr bool IsInt() const { return GetTagValue() == ValueTags::kIntTag; }
+  constexpr bool IsObject() const {
+    return GetTagValue() == ValueTags::kObjectTag;
+  }
+  constexpr bool IsNull() const {
     return bits_ == (ValueTags::kSpecialTag | ValueTags::kNullPayload);
   }
-  bool IsBool() const {
+  constexpr bool IsBool() const {
     return bits_ == (ValueTags::kSpecialTag | ValueTags::kTruePayload) ||
            bits_ == (ValueTags::kSpecialTag | ValueTags::kFalsePayload);
+  }
+  constexpr bool IsFloat() const {
+    return GetTagValue() == ValueTags::kFloatTag;
   }
 
   GCPtr<Object> GetObject() const {

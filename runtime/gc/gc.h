@@ -25,12 +25,19 @@ class Handle;  // ugly af
 template <typename T>
 using GCPtr = T*;
 
+struct GCStats {
+  uint64_t allocated_bytes;
+  uint64_t alive_bytes;
+};
+
 class GC {
  public:
   virtual ~GC() = default;
 
   virtual void* Alloc(std::size_t size, std::size_t align) = 0;
   virtual void Collect(VMThread* thread) = 0;
+
+  virtual GCStats GetStats() const = 0;
 
   template <typename T, typename... Args>
   GCPtr<T> NewSized(std::size_t size, Args&&... args);

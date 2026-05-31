@@ -120,8 +120,9 @@ class VMInterpreter {
 class VMIntrinsics {
  public:
   static std::optional<int64_t> CoerceToInt(Value value);
+  static std::optional<float> CoerceToFloat(Value value);
   static std::optional<int64_t> CoerceToBool(Value value);
-  static GCPtr<StringObject> CoerceToString(VMThread* thread, Value value);
+  static GCPtr<StringObject> CoerceToString(Runtime* runtime, Value value);
 
   static bool IsTruthful(Value value);
   static Value Add(VMThread* thread, Value left, Value right);
@@ -129,9 +130,12 @@ class VMIntrinsics {
   static std::string ToString(Runtime* runtime, Value value);
   static int IdentityHash(Runtime* runtime, Object* object);
 
-  // lovely template
+  // lovely templates
   template <typename Op>
   static Value BinIntOp(VMThread* thread, Value left, Value right, Op op);
+
+  template <typename Op>
+  static Value BinFloatOp(VMThread* thread, Value left, Value right, Op op);
 };
 
 template <typename Op>
@@ -141,9 +145,21 @@ void VMInterpreter::ExecuteBinIntOp(VMThread* thread, VMFrame* frame, Op op) {
   thread->PushStack(VMIntrinsics::BinIntOp(thread, left, right, op));
   frame->pc++;
 }
+template <typename Op>
+void VMInterpreter::ExecuteWildcardBinOp(VMThread* thread, VMFrame* frame, Op op) {
+  const auto right = thread->PopStack();
+  const auto left = thread->PopStack();
+  if (right.IsFloat() || left.IsFloat()) {
+    thread->PushStack(VMIntrinsics::BinFloatOp(thread, left, right, op));
+  } else {
+    thread->PushStack(VMIntrinsics::BinIntOp(thread, left, right, op));
+  }
+  frame->pc++;
+}
 
 template <typename Op>
-Value VMIntrinsics::BinIntOp(VMThread* thread, Value left, Value right, Op op) {
+Value VMIntrinsics::BinIntOp(VMThread* thread, const Value left,
+                             const Value right, Op op) {
   const auto left_coerced = CoerceToInt(left);
   const auto right_coerced = CoerceToInt(right);
   if (!left_coerced || !right_coerced) {
@@ -156,6 +172,17 @@ Value VMIntrinsics::BinIntOp(VMThread* thread, Value left, Value right, Op op) {
   } else {
     return Value::CreateInt(op(*left_coerced, *right_coerced));
   }
+}
+template <typename Op>
+Value VMIntrinsics::BinFloatOp(VMThread* thread, const Value left,
+                               const Value right, Op op) {
+  const auto left_coerced = CoerceToFloat(left);
+  const auto right_coerced = CoerceToFloat(right);
+  if (!left_coerced || !right_coerced) {
+    thread->SetPendingException(Value::CreateNull());
+    return Value::CreateNull();
+  }
+  return Value::CreateFloat(op(*left_coerced, *right_coerced));
 }
 
 }  // namespace runtime

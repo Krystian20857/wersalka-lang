@@ -423,7 +423,7 @@ void CodeGenerator::CompileLValue(Zone& zone, BytecodeBuilder& builder,
       reporter_->Report(
           Diagnostic::Error(
               "Only single dimensional array access operator is supported")
-              .withLabel(target->span(),
+              .WithLabel(target->span(),
                          "invalid operand count for `[...]` operator"));
       return;
     }
@@ -446,7 +446,7 @@ void CodeGenerator::CompileLValue(Zone& zone, BytecodeBuilder& builder,
     reporter_->Report(
         Diagnostic::Error("LValue can be only "
                           "local variables or global symbols")
-            .withLabel(target->span(), "non-assignable left expression"));
+            .WithLabel(target->span(), "non-assignable left expression"));
   }
 }
 void CodeGenerator::CompileRValue(Zone& zone, BytecodeBuilder& builder,
@@ -465,7 +465,7 @@ void CodeGenerator::CompileRValue(Zone& zone, BytecodeBuilder& builder,
       reporter_->Report(
           Diagnostic::Error(
               "Only single dimensional array access operator is supported")
-              .withLabel(value->span(),
+              .WithLabel(value->span(),
                          "invalid operand count for `[...]` operator"));
       return;
     }
@@ -481,7 +481,7 @@ void CodeGenerator::CompileRValue(Zone& zone, BytecodeBuilder& builder,
     reporter_->Report(
         Diagnostic::Error("RValue can be only "
                           "local variables or global symbols")
-            .withLabel(value->span(), "non-assignable left expression"));
+            .WithLabel(value->span(), "non-assignable left expression"));
   }
 }
 ConstantDesc CodeGenerator::CompileConstant(BytecodeBuilder& builder,

@@ -80,6 +80,7 @@ class MarkSweepGC : public GC {
 
   void* Alloc(std::size_t size, std::size_t align) override;
   void Collect(VMThread* thread) override;
+  GCStats GetStats() const override;
 
  private:
   friend class AllocSlab;

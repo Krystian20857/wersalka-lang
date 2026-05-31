@@ -216,11 +216,22 @@ bool Tokenizer::NextTemplate(bool multiline) {
       return true;
     }
 
-    if (AtChar('\"') || At(kTripleQuote)) {
-      NextChar();
-      PopState();
-      current_.kind = TokenKind::kTemplateEnd;
-      return true;
+    if (multiline) {
+      if (At(kTripleQuote)) {
+        NextChar();
+        NextChar();
+        NextChar();
+        PopState();
+        current_.kind = TokenKind::kTemplateEnd;
+        return true;
+      }
+    } else {
+      if (AtChar('\"')) {
+        NextChar();
+        PopState();
+        current_.kind = TokenKind::kTemplateEnd;
+        return true;
+      }
     }
 
     if (TryConsumeTemplateSegment(multiline)) {
@@ -633,6 +644,8 @@ bool Tokenizer::TryConsumeComment() {
 bool Tokenizer::TryConsumeTemplateBegin() {
   if (At(kTripleQuote)) {
     NextChar();
+    NextChar();
+    NextChar();
     PushState(State::Kind::kTemplateMultiline);
     current_.kind = TokenKind::kTemplateBegin;
     return true;
@@ -672,6 +685,7 @@ bool Tokenizer::TryConsumeTemplateSegment(const bool multiline) {
         has_error_ = true;
         return false;
       }
+      NextChar();
       break;
     }
 
@@ -685,7 +699,7 @@ bool Tokenizer::TryConsumeTemplateSegment(const bool multiline) {
       if (!kEscapes.contains(c)) {
         diagnostic_->Report(
             Diagnostic::Error("Illegal escape")
-                .withLabel(TextSpan(pos_, 1),
+                .WithLabel(TextSpan(pos_, 1),
                            absl::StrFormat("escape `%c` doesn't exists", c)));
         has_error_ = true;
         return false;
