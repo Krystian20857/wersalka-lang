@@ -134,8 +134,11 @@ class VMIntrinsics {
   static std::string ToString(Runtime* runtime, Value value);
   static int IdentityHash(Runtime* runtime, Object* object);
 
-  static void SetField(VMThread* thread, Value object, Value field, Value value);
+  static void SetField(VMThread* thread, Value object, Value field,
+                       Value value);
   static Value GetField(VMThread* thread, Value object, Value field);
+
+  static std::string_view GetValueTypeName(Value value);
 
   // lovely templates
   template <typename Op>
@@ -153,7 +156,8 @@ void VMInterpreter::ExecuteBinIntOp(VMThread* thread, VMFrame* frame, Op op) {
   frame->pc++;
 }
 template <typename Op>
-void VMInterpreter::ExecuteWildcardBinOp(VMThread* thread, VMFrame* frame, Op op) {
+void VMInterpreter::ExecuteWildcardBinOp(VMThread* thread, VMFrame* frame,
+                                         Op op) {
   const auto right = thread->PopStack();
   const auto left = thread->PopStack();
   if (right.IsFloat() || left.IsFloat()) {
@@ -170,7 +174,9 @@ Value VMIntrinsics::BinIntOp(VMThread* thread, const Value left,
   const auto left_coerced = CoerceToInt(left);
   const auto right_coerced = CoerceToInt(right);
   if (!left_coerced || !right_coerced) {
-    thread->SetPendingException(Value::CreateNull());
+    thread->ThrowException(thread->runtime()->NewException(absl::StrFormat(
+        "Unsupported types for `int` binary operation, left: `%s`, right: %s",
+        GetValueTypeName(left), GetValueTypeName(right))));
     return Value::CreateNull();
   }
   using Result = std::invoke_result_t<Op, int64_t, int64_t>();
@@ -186,8 +192,9 @@ Value VMIntrinsics::BinFloatOp(VMThread* thread, const Value left,
   const auto left_coerced = CoerceToFloat(left);
   const auto right_coerced = CoerceToFloat(right);
   if (!left_coerced || !right_coerced) {
-    thread->SetPendingException(Value::CreateNull());
-    return Value::CreateNull();
+    thread->ThrowException(thread->runtime()->NewException(absl::StrFormat(
+        "Unsupported types for `float` binary operation, left: `%s`, right: %s",
+        GetValueTypeName(left), GetValueTypeName(right))));
   }
   return Value::CreateFloat(op(*left_coerced, *right_coerced));
 }

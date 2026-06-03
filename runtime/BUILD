@@ -69,3 +69,13 @@ cc_binary(
     srcs = ["playground.cc"],
     deps = ["//runtime"],
 )
+
+cc_binary(
+    name = "vm",
+    srcs = ["main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//runtime",
+        "@abseil-cpp//absl/flags:parse",
+    ],
+)

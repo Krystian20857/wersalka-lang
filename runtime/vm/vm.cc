@@ -560,6 +560,43 @@ Value VMIntrinsics::GetField(VMThread* thread, const Value object,
       thread->runtime()->shaped_tree()->OffsetOf(shaped->shape(), *field_str);
   return slot < 0 ? Value::CreateNull() : shaped->GetFields()[slot];
 }
+std::string_view VMIntrinsics::GetValueTypeName(Value value) {
+  if (value.IsInt()) {
+    return "int";
+  }
+  if (value.IsFloat()) {
+    return "float";
+  }
+  if (value.IsBool()) {
+    return "bool";
+  }
+  if (value.IsNull()) {
+    return "null";
+  }
+  if (value.IsObject()) {
+    switch (value.GetObject()->kind()) {
+      case ObjectKind::kFunction:
+        return "function";
+      case ObjectKind::kNativeFunction:
+        return "native_function";
+      case ObjectKind::kBigInt:
+        return "big_int";
+      case ObjectKind::kString:
+        return "string";
+      case ObjectKind::kShape:
+        return "object_shape";
+      case ObjectKind::kTransitionArray:
+        return "object_shape_transition_array";
+      case ObjectKind::kShapedObject:
+        return "object";
+      case ObjectKind::kValueArray:
+        return "object_field_array";
+      case ObjectKind::kArray:
+        return "array";
+    }
+  }
+  ABSL_UNREACHABLE();
+}
 
 std::optional<int64_t> VMIntrinsics::CoerceToInt(Value value) {
   // TODO: string -> int parse
