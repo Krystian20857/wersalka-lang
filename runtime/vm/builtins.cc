@@ -84,6 +84,16 @@ void Builtins::RegisterBuiltIns() const {
         // clang-format on
         return Value::CreateObject(object);
       });
+  runtime_->BindGlobalFunction(
+      "new_array", 1, [](NativeContext* ctx, auto args) -> Value {
+        Value size = args[0];
+        if (!size.IsInt()) {
+          *ctx->exception =
+              ctx->runtime->NewException("Array size must be of type `int`");
+          return Value::CreateNull();
+        }
+        return ArrayObject::New(ctx->runtime->gc(), size.GetIntValue());
+      });
 }
 FixedShape Builtins::CreateFixedShape(
     std::initializer_list<std::string_view> fields) const {
