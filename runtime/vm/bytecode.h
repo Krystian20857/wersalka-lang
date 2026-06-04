@@ -72,6 +72,7 @@ struct TryCatchBlock {
 struct ConstantDesc {
   static ConstantDesc CreateUInt(uint64_t value);
   static ConstantDesc CreateNull();
+  static ConstantDesc CreateBool(bool value);
   static ConstantDesc CreateString(std::string_view str);
 
   enum class Kind { kInt, kUInt, kFloat, kBool, kNull, kString };
@@ -112,7 +113,6 @@ class BytecodeBuilder {
 
   int EmitPushConst(ConstantDesc constant);
   int Emit(Opcode opcode, uint16_t c1, uint32_t c2);
-  int EmitVarGlobal(Opcode opcode, ZoneStr symbol_name);
   int EmitVarLocal(Opcode opcode, uint16_t slot);
   int EmitInvoke(Opcode opcode, uint16_t arg_count);
   int Emit(Opcode opcode);

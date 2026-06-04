@@ -14,14 +14,16 @@ namespace runtime {
 
 struct ParserTestFixture : ::testing::Test {
   std::string Parse(std::string_view source) {
-    Tokenizer tokenizer(&zone, &reporter, source);
-    Parser parser(&zone, &tokenizer, &reporter);
+    const SourceFile source_file(std::string{source});
+    Tokenizer tokenizer(&zone, &reporter, &source_file);
+    Parser parser(&zone, &tokenizer, &reporter, &source_file);
     return DumpAST(parser.Parse(true));
   }
 
   std::string ParseUnit(std::string_view source) {
-    Tokenizer tokenizer(&zone, &reporter, source);
-    Parser parser(&zone, &tokenizer, &reporter);
+    const SourceFile source_file(std::string{source});
+    Tokenizer tokenizer(&zone, &reporter, &source_file);
+    Parser parser(&zone, &tokenizer, &reporter, &source_file);
     return DumpAST(parser.Parse());
   }
 
@@ -410,17 +412,10 @@ INSTANTIATE_TEST_SUITE_P(Statements, CompileUnitParamTest,
       "\nCompileUnit\n"
     },
     ParserCase{
-      "var x",
+      "var x = 1;",
       R"(
 CompileUnit
-  VarStmt [x]
-)"
-    },
-    ParserCase{
-      "var x = 1",
-      R"(
-CompileUnit
-  VarStmt [x]
+  GlobalDecl [x]
     ConstExpr [1]
 )"
     },
@@ -499,13 +494,13 @@ CompileUnit
 )"
     },
     ParserCase{
-      "func foo() {} var x = 1",
+      "func foo() {} var x = 1;",
       R"(
 CompileUnit
+  GlobalDecl [x]
+    ConstExpr [1]
   FunctionDecl [foo]
     BlockStmt
-  VarStmt [x]
-    ConstExpr [1]
 )"
     }
   )

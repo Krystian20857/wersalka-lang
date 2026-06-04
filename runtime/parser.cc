@@ -29,7 +29,10 @@ constexpr auto kStmtBeginTokens =
              TokenKind::kThrow} |
     kExprBeginTokens;
 constexpr auto kTopLevelBeginTokens =
-    TokenSet{TokenKind::kFunc} | kStmtBeginTokens;
+    TokenSet{TokenKind::kFunc, TokenKind::kVar, TokenKind::kModule} |
+    kStmtBeginTokens;
+constexpr auto kModuleMemberBeginTokens =
+    TokenSet{TokenKind::kFunc, TokenKind::kVar, TokenKind::kModule};
 constexpr bool IsRightAssoc(const TokenKind kind) {
   switch (kind) {
     case TokenKind::kEq:
@@ -70,18 +73,26 @@ ZonePtr<ASTNode> Parser::Parse(bool expr) {
 
   const auto mark = SpanBegin();
   ZonePtrList<ASTStmt> stmts(zone_);
+  ZonePtrList<ASTGlobalDecl> globals(zone_);
   ZonePtrList<ASTFunctionDecl> functions(zone_);
+  ZonePtrList<ASTModuleDecl> modules(zone_);
   while (At(kTopLevelBeginTokens)) {
-    if (At(kStmtBeginTokens)) {
+    if (At(TokenKind::kVar)) {
+      globals.Add(zone_, ParseGlobalDecl());
+    } else if (At(TokenKind::kFunc)) {
+      functions.Add(zone_, ParseFuncDecl());
+    } else if (At(TokenKind::kModule)) {
+      modules.Add(zone_, ParseModuleDecl());
+    } else if (At(kStmtBeginTokens)) {
       const auto stmt = ParseStmt();
       stmts.Add(zone_, stmt);
-    } else if (At(TokenKind::kFunc)) {
-      const auto func = ParseFuncDecl();
-      functions.Add(zone_, func);
+    } else {
+      break;
     }
   }
 
-  return zone_->New<ASTCompileUnit>(SpanEnd(mark), functions, stmts);
+  return zone_->New<ASTCompileUnit>(SpanEnd(mark), globals, functions, modules,
+                                    stmts);
 }
 ZonePtr<ASTFunctionDecl> Parser::ParseFuncDecl() {
   const auto mark = SpanBegin();
@@ -102,6 +113,38 @@ ZonePtr<ASTFunctionDecl> Parser::ParseFuncDecl() {
   const auto block = ParseBlockStmt();
   return zone_->New<ASTFunctionDecl>(
       SpanEnd(mark), zone_->InternString(name->str_v), params, block);
+}
+ZonePtr<ASTGlobalDecl> Parser::ParseGlobalDecl() {
+  const auto mark = SpanBegin();
+  Expect(TokenKind::kVar);
+  const auto name = Expect(TokenKind::kIdent);
+  Expect(TokenKind::kEq);
+  const auto init = ParseExpr(Precedence::kNone);
+  Expect(TokenKind::kSemi);
+  return zone_->New<ASTGlobalDecl>(SpanEnd(mark), name->str_v, init);
+}
+ZonePtr<ASTModuleDecl> Parser::ParseModuleDecl() {
+  const auto mark = SpanBegin();
+  Expect(TokenKind::kModule);
+  const auto name = Expect(TokenKind::kIdent);
+  Expect(TokenKind::kOpenBrace);
+  ZonePtrList<ASTGlobalDecl> globals(zone_);
+  ZonePtrList<ASTFunctionDecl> functions(zone_);
+  ZonePtrList<ASTModuleDecl> inner_modules(zone_);
+  while (At(kModuleMemberBeginTokens)) {
+    if (At(TokenKind::kVar)) {
+      globals.Add(zone_, ParseGlobalDecl());
+    } else if (At(TokenKind::kFunc)) {
+      functions.Add(zone_, ParseFuncDecl());
+    } else if (At(TokenKind::kModule)) {
+      inner_modules.Add(zone_, ParseModuleDecl());
+    } else {
+      break;
+    }
+  }
+  Expect(TokenKind::kCloseBrace);
+  return zone_->New<ASTModuleDecl>(SpanEnd(mark), name->str_v, globals,
+                                   functions, inner_modules);
 }
 ZonePtr<ASTExpr> Parser::ParseExpr(const Precedence precedence) {
   auto left = ParsePrimaryExpr();
@@ -573,6 +616,9 @@ void Parser::Synchronize() {
 }
 int Parser::SpanBegin() { return Peek()->span.offset; }
 TextSpan Parser::SpanEnd(int mark) const {
+  if (pos_ == 0) {
+    return TextSpan{mark, 0};
+  }
   const auto& last = tokens_[pos_ - 1];
   return TextSpan{mark, last->span.offset + last->span.length - mark};
 }

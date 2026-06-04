@@ -69,7 +69,6 @@ void Builtins::RegisterBuiltIns() const {
         } else {
           *ctx->exception = ctx->runtime->NewException(
               "Unknown cast type, allowed: `int`, `float`, `string`, `bool`");
-          *ctx->exception = Value::CreateNull();
           return Value::CreateNull();
         }
       });

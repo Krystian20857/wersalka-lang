@@ -80,6 +80,7 @@ class ZoneList {
 
   template <typename Elem>
   void Add(Zone* zone, Elem&& element);
+  void AddAll(Zone* zone, const ZoneList* other);
   void Clear();
 
   T& Back() const;
@@ -168,6 +169,13 @@ void ZoneList<T>::Add(Zone* zone, Elem&& element) {
   elements_[size_++] = std::forward<Elem>(element);
 }
 template <typename T>
+void ZoneList<T>::AddAll(Zone* zone, const ZoneList* other) {
+  Reserve(zone, size_ + other->size());
+  std::memcpy(elements_ + size_,
+              other->elements_, other->size() * sizeof(T));
+  size_ += other->size();
+}
+template <typename T>
 void ZoneList<T>::Clear() {
   size_ = 0;
 }
@@ -182,15 +190,15 @@ void ZoneList<T>::PopBack() {
 }
 template <typename T>
 void ZoneList<T>::Reserve(Zone* zone, int size) {
-  if (elements_ == nullptr) {
-    elements_ = zone->NewBuffer<T>(size);
-    capacity_ = size;
-  } else {
-    auto* new_elements = zone->NewBuffer<T>(size);
-    std::memcpy(new_elements, elements_, capacity_ * sizeof(T));
-    capacity_ = size;
-    elements_ = new_elements;
+  if (capacity_ >= size) {
+    return;
   }
+  auto* new_elements = zone->NewBuffer<T>(size);
+  if (elements_ != nullptr) {
+    std::memcpy(new_elements, elements_, size_ * sizeof(T));
+  }
+  capacity_ = size;
+  elements_ = new_elements;
 }
 
 template <typename T>

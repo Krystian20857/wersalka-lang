@@ -99,11 +99,37 @@ static void DumpNode(const ASTNode* node, std::string& out, int depth) {
     case ASTNode::Kind::kCompileUnit: {
       const auto* n = static_cast<const ASTCompileUnit*>(node);
       absl::StrAppendFormat(&out, "%sCompileUnit\n", indent);
+      for (int i = 0; i < n->globals.size(); i++) {
+        DumpNode(n->globals[i], out, depth + 1);
+      }
       for (int i = 0; i < n->functions.size(); i++) {
         DumpNode(n->functions[i], out, depth + 1);
       }
+      for (int i = 0; i < n->inner_modules.size(); i++) {
+        DumpNode(n->inner_modules[i], out, depth + 1);
+      }
       for (int i = 0; i < n->stmts.size(); i++) {
         DumpNode(n->stmts[i], out, depth + 1);
+      }
+      break;
+    }
+    case ASTNode::Kind::kGlobalDecl: {
+      const auto* n = static_cast<const ASTGlobalDecl*>(node);
+      absl::StrAppendFormat(&out, "%sGlobalDecl [%s]\n", indent, n->name);
+      DumpNode(n->init, out, depth + 1);
+      break;
+    }
+    case ASTNode::Kind::kModuleDecl: {
+      const auto* n = static_cast<const ASTModuleDecl*>(node);
+      absl::StrAppendFormat(&out, "%sModuleDecl [%s]\n", indent, n->name);
+      for (int i = 0; i < n->globals.size(); i++) {
+        DumpNode(n->globals[i], out, depth + 1);
+      }
+      for (int i = 0; i < n->functions.size(); i++) {
+        DumpNode(n->functions[i], out, depth + 1);
+      }
+      for (int i = 0; i < n->inner_modules.size(); i++) {
+        DumpNode(n->inner_modules[i], out, depth + 1);
       }
       break;
     }

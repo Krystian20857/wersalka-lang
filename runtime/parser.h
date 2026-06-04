@@ -40,7 +40,7 @@ class Parser final {
  public:
   explicit Parser(Zone* zone, Tokenizer* tokenizer,
                   DiagnosticReporter* reporter,
-                  const ZonePtr<SourceFile> source_file)
+                  const SourceFile* source_file)
       : zone_(zone),
         reporter_(reporter),
         tokenizer_(tokenizer),
@@ -71,6 +71,8 @@ class Parser final {
   static constexpr auto kTokenBufferSize = 512;
 
   ZonePtr<ASTFunctionDecl> ParseFuncDecl();
+  ZonePtr<ASTGlobalDecl> ParseGlobalDecl();
+  ZonePtr<ASTModuleDecl> ParseModuleDecl();
 
   ZonePtr<ASTExpr> ParseExpr(Precedence precedence);
   ZonePtr<ASTExpr> ParsePrimaryExpr();
@@ -118,7 +120,7 @@ class Parser final {
   Tokenizer* tokenizer_;
   ZonePtrList<Token> tokens_;
   int pos_;
-  ZonePtr<SourceFile> source_file_;
+  const SourceFile* source_file_;
 };
 
 constexpr TokenSet::TokenSet(std::initializer_list<TokenKind> tokens) {

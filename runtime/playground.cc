@@ -69,7 +69,7 @@ func main() {
 
   std::cout << DumpAST(ast);
 
-  Runtime runtime(&zone);
+  Runtime runtime(&zone, nullptr);
   runtime.builtins()->RegisterBuiltIns();
   runtime.BindGlobalFunction(
       "print", 1, [](const auto context, const auto args) {
@@ -84,12 +84,11 @@ func main() {
     for (const auto function : compile_unit->functions) {
       Zone codegen_zone;
       CodeGenerator codegen(&runtime, &reporter, &codegen_zone,
-                            source_file.get());
-      const auto object = codegen.CreateCodeObject(function);
+                            source_file.get(), {});
+      const auto func_obj = codegen.CompileFunctionObject(function);
       std::cout << absl::StrFormat("MAX_STACK %d\nMAX_LOCALS %d\n",
-                                   object->max_stack, object->max_locals);
-      const auto func_obj = runtime.gc()->New<FunctionObject>(
-          runtime.GetPermanentZone()->InternString(function->name), object);
+                                   func_obj->code_obj()->max_stack,
+                                   func_obj->code_obj()->max_locals);
       runtime.RegisterFunction(func_obj);
     }
   }

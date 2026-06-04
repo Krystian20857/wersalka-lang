@@ -10,6 +10,7 @@
 #include "runtime/vm/object_impl.h"
 #include "runtime/vm/runtime.h"
 #include "runtime/vm/value.h"
+#include "runtime/vm/vm_intrinsics.h"
 
 namespace wersalka {
 namespace lang {
@@ -83,7 +84,6 @@ class VMThread {
   int frame_count_;
   VMThreadState thread_state_;
   Value pending_exception_;
-  absl::flat_hash_map<ZoneStr, Value> globals_;
   std::array<Value, kNativeArgumentBufferSize> native_args_buffer_;
   std::array<Value, kMaxHandles> handle_stack_;
   Value* handle_top_;
@@ -102,6 +102,8 @@ class VMInterpreter {
   explicit VMInterpreter(Runtime* runtime) : runtime_(runtime) {}
 
   Value Execute(VMThread* thread, GCPtr<FunctionObject> entry);
+  Value Execute(VMThread* thread, GCPtr<FunctionObject> entry,
+                std::span<const Value> args);
 
  private:
   Value Run(VMThread* thread);
@@ -120,34 +122,6 @@ class VMInterpreter {
   Runtime* runtime_;
 };
 
-class VMIntrinsics {
- public:
-  static std::optional<int64_t> CoerceToInt(Value value);
-  static std::optional<float> CoerceToFloat(Value value);
-  static std::optional<int64_t> CoerceToBool(Value value);
-  static GCPtr<StringObject> CoerceToString(Runtime* runtime, Value value);
-
-  static bool IsTruthful(Value value);
-  static Value Add(VMThread* thread, Value left, Value right);
-  static Value Sub(VMThread* thread, Value left, Value right);
-  static Value Negate(VMThread* thread, Value value);
-  static std::string ToString(Runtime* runtime, Value value);
-  static int IdentityHash(Runtime* runtime, Object* object);
-
-  static void SetField(VMThread* thread, Value object, Value field,
-                       Value value);
-  static Value GetField(VMThread* thread, Value object, Value field);
-
-  static std::string_view GetValueTypeName(Value value);
-
-  // lovely templates
-  template <typename Op>
-  static Value BinIntOp(VMThread* thread, Value left, Value right, Op op);
-
-  template <typename Op>
-  static Value BinFloatOp(VMThread* thread, Value left, Value right, Op op);
-};
-
 template <typename Op>
 void VMInterpreter::ExecuteBinIntOp(VMThread* thread, VMFrame* frame, Op op) {
   const auto right = thread->PopStack();
@@ -155,6 +129,7 @@ void VMInterpreter::ExecuteBinIntOp(VMThread* thread, VMFrame* frame, Op op) {
   thread->PushStack(VMIntrinsics::BinIntOp(thread, left, right, op));
   frame->pc++;
 }
+
 template <typename Op>
 void VMInterpreter::ExecuteWildcardBinOp(VMThread* thread, VMFrame* frame,
                                          Op op) {
@@ -166,37 +141,6 @@ void VMInterpreter::ExecuteWildcardBinOp(VMThread* thread, VMFrame* frame,
     thread->PushStack(VMIntrinsics::BinIntOp(thread, left, right, op));
   }
   frame->pc++;
-}
-
-template <typename Op>
-Value VMIntrinsics::BinIntOp(VMThread* thread, const Value left,
-                             const Value right, Op op) {
-  const auto left_coerced = CoerceToInt(left);
-  const auto right_coerced = CoerceToInt(right);
-  if (!left_coerced || !right_coerced) {
-    thread->ThrowException(thread->runtime()->NewException(absl::StrFormat(
-        "Unsupported types for `int` binary operation, left: `%s`, right: %s",
-        GetValueTypeName(left), GetValueTypeName(right))));
-    return Value::CreateNull();
-  }
-  using Result = std::invoke_result_t<Op, int64_t, int64_t>();
-  if constexpr (std::is_same_v<Result, bool>) {
-    return Value::CreateBool(op(*left_coerced, *right_coerced));
-  } else {
-    return Value::CreateInt(op(*left_coerced, *right_coerced));
-  }
-}
-template <typename Op>
-Value VMIntrinsics::BinFloatOp(VMThread* thread, const Value left,
-                               const Value right, Op op) {
-  const auto left_coerced = CoerceToFloat(left);
-  const auto right_coerced = CoerceToFloat(right);
-  if (!left_coerced || !right_coerced) {
-    thread->ThrowException(thread->runtime()->NewException(absl::StrFormat(
-        "Unsupported types for `float` binary operation, left: `%s`, right: %s",
-        GetValueTypeName(left), GetValueTypeName(right))));
-  }
-  return Value::CreateFloat(op(*left_coerced, *right_coerced));
 }
 
 }  // namespace runtime

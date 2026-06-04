@@ -1,19 +1,9 @@
-func min(a, b) {
-  if (a < b) {
-    return a;
-  }
-  return b;
-}
+module core {
+  var error = import("error");
 
-func max(a, b) {
-  if (a > b) {
-    return a;
+  func assert_eq(expected, actual, message) {
+    if (expected != actual) {
+      throw error.make_error("Assertion failed, expected `{expected}` got `{actual}`");
+    }
   }
-  return b;
-}
-
-func make_error(message) {
-  var error = new {};
-  error.message = message;
-  return error;
 }

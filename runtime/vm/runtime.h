@@ -47,12 +47,17 @@ class NativeFunctionObject : public Object {
   HandlerFn handler_;
 };
 
+struct RuntimeConfig {
+  // TODO: replace consts with rt config
+};
+
 class Runtime {
  public:
   friend class GCVisitor;
 
-  explicit Runtime(Zone* zone)
-      : zone_(zone),
+  explicit Runtime(Zone* zone, void* ctx)
+      : ctx(ctx),
+        zone_(zone),
         gc_(std::make_unique<MarkSweepGC>()),
         shapes_(gc_.get()),
         builtins_(std::make_unique<Builtins>(this)) {}
@@ -62,6 +67,7 @@ class Runtime {
   void AddGlobalValue(std::string_view name, Value value);
   void BindGlobalFunction(std::string_view name, int arg_count,
                           NativeFunctionObject::HandlerFn handler);
+  void AddRootModule(Value value);
 
   Value LookupGlobal(std::string_view name);
 
@@ -77,6 +83,9 @@ class Runtime {
   GC* gc() const { return gc_.get(); }
   const ShapeTree* shaped_tree() const { return &shapes_; }
   const Builtins* builtins() const { return builtins_.get(); }  // refs&&&&?
+  const std::vector<Value>& root_modules() const { return root_modules_; }
+
+  void* ctx;
 
  private:
   Zone* zone_;
@@ -86,6 +95,7 @@ class Runtime {
   std::unique_ptr<GC> gc_;
   ShapeTree shapes_;
   std::unique_ptr<Builtins> builtins_;
+  std::vector<Value> root_modules_;
 };
 
 template <typename... Args>

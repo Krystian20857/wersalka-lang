@@ -37,6 +37,9 @@ class Value {
 
   constexpr Value() : Value(ValueTags::kSpecialTag | ValueTags::kNullPayload) {}
 
+  template <typename T>
+  constexpr Value(GCPtr<T> ptr) : Value(CreateObject(ptr)) {}
+
   static constexpr Value CreateInt(const int64_t value) {
     CHECK(value >= ValueTags::kIntMinValue && value <= ValueTags::kIntMaxValue);
     return Value{(value << 3) | ValueTags::kIntTag};

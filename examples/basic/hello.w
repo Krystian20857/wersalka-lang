@@ -5,8 +5,7 @@ func fib(n) {
   return fib(n - 1) + fib(n - 2);
 }
 
-func main() {
+func __main__() {
   print("Hello, World!");
-  var result = fib(10);
-  print("fib(10) = {result}");
+  print("fib(10) = {fib(10)}");
 }

@@ -93,12 +93,21 @@ void VMThread::ThrowException(Value value) {
 
 Value VMInterpreter::Execute(VMThread* thread,
                              const GCPtr<FunctionObject> entry) {
+  return Execute(thread, entry, {});
+}
+
+Value VMInterpreter::Execute(VMThread* thread,
+                             const GCPtr<FunctionObject> entry,
+                             const std::span<const Value> args) {
   thread->SetThreadState(VMThreadState::kRunning);
+  thread->SetStackTop(thread->stack_.data());
 
-  // callee
   thread->PushStack(Value::CreateObject(entry));
+  for (const auto& arg : args) {
+    thread->PushStack(arg);
+  }
 
-  if (!CallFunction(thread, entry, 0)) {
+  if (!CallFunction(thread, entry, static_cast<int>(args.size()))) {
     return thread->GetCurrentException();
   }
 
@@ -135,26 +144,75 @@ Value VMInterpreter::Run(VMThread* thread) {
         break;
       }
       case Opcode::kLoadGlobal: {
-        const auto name = code_object->constants[instr.c2];
-        if (name.kind != ConstantDesc::Kind::kString) {
+        const auto global_name_value = thread->PopStack();
+        if (!global_name_value.IsObject(ObjectKind::kString)) {
           ThrowRuntimeError(thread, "Invalid LOAD_GLOBAL operand");
           break;
         }
-        CHECK(name.kind == ConstantDesc::Kind::kString);  // TODO: Exception
-        if (auto global = thread->globals_.find(name.str_v);
-            global != thread->globals_.end()) {
-          thread->PushStack(global->second);
-        } else {
-          thread->PushStack(runtime_->LookupGlobal(name.str_v));
+        const auto global_name =
+            global_name_value.GetObjectUnchecked<StringObject>();
+        const auto func = frame->func_obj.Get();
+
+        // 1. module member
+        if (!func->module().IsNull()) {
+          const auto module = func->module();
+          const int slot = runtime_->shaped_tree()->OffsetOf(
+              module->shape(), global_name->ToStringView());
+          if (slot >= 0) {
+            thread->PushStack(module->GetFields()[slot]);
+            frame->pc++;
+            break;
+          }
         }
+
+        // 2. ancestor module
+        bool aliased = false;
+        for (const auto& alias : func->ancestor_aliases()) {
+          if (alias.name == global_name->ToStringView()) {
+            thread->PushStack(Value::CreateObject(alias.module));
+            aliased = true;
+            break;
+          }
+        }
+        if (aliased) {
+          frame->pc++;
+          break;
+        }
+
+        // 3. rt builtins
+        thread->PushStack(runtime_->LookupGlobal(global_name->ToStringView()));
         frame->pc++;
         break;
       }
       case Opcode::kStoreGlobal: {
-        const auto name = code_object->constants[instr.c2];
-        CHECK(name.kind == ConstantDesc::Kind::kString);
-        thread->globals_[name.str_v] = thread->PopStack();
-        frame->pc++;
+        const auto global_name_value = thread->PopStack();
+        if (!global_name_value.IsObject(ObjectKind::kString)) {
+          ThrowRuntimeError(thread, "Invalid STORE_GLOBAL operand");
+          break;
+        }
+        const auto global_name =
+            global_name_value.GetObjectUnchecked<StringObject>();
+        const auto value = thread->PopStack();
+        const auto func = frame->func_obj.Get();
+        if (func->module().IsNull()) {
+          ThrowRuntimeError(thread,
+                            "STORE_GLOBAL without an enclosing module context");
+          break;
+        }
+        const auto module = func->module();
+        const int slot = runtime_->shaped_tree()->OffsetOf(
+            module->shape(), global_name->ToStringView());
+        if (slot >= 0) {
+          module->GetFields()[slot] = value;
+          frame->pc++;
+          break;
+        }
+        // slow path - add module field
+        VMIntrinsics::SetField(thread, Value::CreateObject(module.Get()),
+                               Value::CreateObject(global_name), value);
+        if (thread->GetThreadState() == VMThreadState::kRunning) {
+          frame->pc++;
+        }
         break;
       }
       case Opcode::kJmp: {
@@ -275,7 +333,10 @@ Value VMInterpreter::Run(VMThread* thread) {
         break;
       }
       case Opcode::kCmpEq: {
-        ExecuteBinIntOp(thread, frame, std::equal_to<uint64_t>{});
+        const auto right = thread->PopStack();
+        const auto left = thread->PopStack();
+        thread->PushStack(VMIntrinsics::Equals(thread, left, right));
+        frame->pc++;
         break;
       }
       case Opcode::kNeg: {
@@ -317,14 +378,15 @@ Value VMInterpreter::Run(VMThread* thread) {
           }
           thread->PopStack();  // pop callee
 
-          auto native_context =
-              NativeContext{.runtime = runtime_, .exception = nullptr};
+          Value native_exception = Value::CreateNull();
+          auto native_context = NativeContext{.runtime = runtime_,
+                                              .exception = &native_exception};
           thread->SetThreadState(VMThreadState::kNative);
           const auto result = fn->handler()(
               &native_context, {thread->native_args_buffer_.data(),
                                 static_cast<std::size_t>(arg_count)});
-          if (native_context.exception != nullptr) {
-            thread->ThrowException(*native_context.exception);
+          if (native_exception.IsObject()) {
+            thread->ThrowException(native_exception);
           } else {
             thread->SetThreadState(VMThreadState::kRunning);
             thread->PushStack(result);
@@ -520,210 +582,6 @@ void VMInterpreter::ThrowRuntimeError(VMThread* thread,
   thread->ThrowException(runtime_->NewException(message));
 }
 
-void VMIntrinsics::SetField(VMThread* thread, const Value object,
-                            const Value field, const Value value) {
-  if (!object.IsObject() ||
-      object.GetObject()->kind() != ObjectKind::kShapedObject) {
-    thread->ThrowException(
-        thread->runtime()->NewException("Invalid type, `object` required"));
-    return;
-  }
-  if (!field.IsObject() || field.GetObject()->kind() != ObjectKind::kString) {
-    thread->ThrowException(
-        thread->runtime()->NewException("Invalid type, `string` required"));
-    return;
-  }
-  const auto shaped = object.GetObjectUnchecked<ShapedObject>();
-  const auto field_str = field.GetObjectUnchecked<StringObject>();
-  const auto new_shape = thread->runtime()->shaped_tree()->TransitionOf(
-      shaped->shape(), Tagged(field_str));
-  shaped->TransitionTo(thread->runtime()->gc(), new_shape);
-  shaped->GetFields()[new_shape->slot_index()] = value;
-}
-
-Value VMIntrinsics::GetField(VMThread* thread, const Value object,
-                             const Value field) {
-  if (!object.IsObject() ||
-      object.GetObject()->kind() != ObjectKind::kShapedObject) {
-    thread->ThrowException(
-        thread->runtime()->NewException("Invalid type, `object` required"));
-    return Value::CreateNull();
-  }
-  if (!field.IsObject() || field.GetObject()->kind() != ObjectKind::kString) {
-    thread->ThrowException(
-        thread->runtime()->NewException("Invalid type, `string` required"));
-    return Value::CreateNull();
-  }
-  const auto shaped = object.GetObjectUnchecked<ShapedObject>();
-  const auto field_str = field.GetObjectUnchecked<StringObject>();
-  const int slot =
-      thread->runtime()->shaped_tree()->OffsetOf(shaped->shape(), *field_str);
-  return slot < 0 ? Value::CreateNull() : shaped->GetFields()[slot];
-}
-std::string_view VMIntrinsics::GetValueTypeName(Value value) {
-  if (value.IsInt()) {
-    return "int";
-  }
-  if (value.IsFloat()) {
-    return "float";
-  }
-  if (value.IsBool()) {
-    return "bool";
-  }
-  if (value.IsNull()) {
-    return "null";
-  }
-  if (value.IsObject()) {
-    switch (value.GetObject()->kind()) {
-      case ObjectKind::kFunction:
-        return "function";
-      case ObjectKind::kNativeFunction:
-        return "native_function";
-      case ObjectKind::kBigInt:
-        return "big_int";
-      case ObjectKind::kString:
-        return "string";
-      case ObjectKind::kShape:
-        return "object_shape";
-      case ObjectKind::kTransitionArray:
-        return "object_shape_transition_array";
-      case ObjectKind::kShapedObject:
-        return "object";
-      case ObjectKind::kValueArray:
-        return "object_field_array";
-      case ObjectKind::kArray:
-        return "array";
-    }
-  }
-  ABSL_UNREACHABLE();
-}
-
-std::optional<int64_t> VMIntrinsics::CoerceToInt(Value value) {
-  // TODO: string -> int parse
-  if (value.IsInt()) {
-    return value.GetIntValue();
-  }
-  if (value.IsBool()) {
-    return value.GetBoolValue() ? 1 : 0;
-  }
-  if (value.IsNull()) {
-    return 0;
-  }
-  return std::nullopt;
-}
-std::optional<float> VMIntrinsics::CoerceToFloat(Value value) {
-  // TODO: string -> float parse
-  if (value.IsFloat()) {
-    return value.GetFloatValue();
-  }
-  if (value.IsInt()) {
-    return static_cast<float>(value.GetIntValue());
-  }
-  return CoerceToInt(value).transform(
-      [](const auto it) { return static_cast<float>(it); });
-}
-std::optional<int64_t> VMIntrinsics::CoerceToBool(Value value) {
-  // TODO: string -> bool parse
-  if (value.IsBool()) {
-    return value.GetBoolValue();
-  }
-  if (value.IsInt()) {
-    return value.GetIntValue() > 0;
-  }
-  if (value.IsNull()) {
-    return false;
-  }
-  return std::nullopt;
-}
-GCPtr<StringObject> VMIntrinsics::CoerceToString(Runtime* runtime,
-                                                 const Value value) {
-  return StringObject::New(runtime->gc(), ToString(runtime, value));
-}
-bool VMIntrinsics::IsTruthful(Value value) {
-  if (value.IsNull()) {
-    return false;
-  }
-  if (value.IsBool()) {
-    return value.GetBoolValue();
-  }
-  if (value.IsInt()) {
-    return value.GetIntValue() > 0;
-  }
-  return false;
-}
-Value VMIntrinsics::Add(VMThread* thread, Value left, Value right) {
-  // string concat
-  const auto do_concat =
-      left.IsObject(ObjectKind::kString) || right.IsObject(ObjectKind::kString);
-  if (do_concat) {
-    HandleScope scope(thread);
-    const auto left_string =
-        scope.Alloc(CoerceToString(thread->runtime(), left));
-    const auto right_string =
-        scope.Alloc(CoerceToString(thread->runtime(), right));
-    return Value::CreateObject(StringObject::Concat(thread->runtime()->gc(),
-                                                    left_string, right_string));
-  }
-  if (right.IsFloat() || left.IsFloat()) {
-    return BinFloatOp(thread, left, right,
-                      [](auto a, auto b) { return a + b; });
-  } else {
-    return BinIntOp(thread, left, right, [](auto a, auto b) { return a + b; });
-  }
-}
-Value VMIntrinsics::Sub(VMThread* thread, Value left, Value right) {
-  if (right.IsFloat() || left.IsFloat()) {
-    return BinFloatOp(thread, left, right,
-                      [](auto a, auto b) { return a - b; });
-  } else {
-    return BinIntOp(thread, left, right, [](auto a, auto b) { return a - b; });
-  }
-}
-Value VMIntrinsics::Negate(VMThread* thread, Value value) {
-  const auto value_coerced = CoerceToInt(value);
-  if (!value_coerced) {
-    thread->ThrowException(thread->runtime()->NewException(
-        "Cannot negate, invalid type, `int` type required"));
-    return Value::CreateNull();
-  }
-  return Value::CreateInt(-(*value_coerced));
-}
-std::string VMIntrinsics::ToString(Runtime* runtime, Value value) {
-  // TODO: remove unnecessary string intermediate allocation here
-  if (value.IsNull()) {
-    return "null";
-  }
-  if (value.IsInt()) {
-    return std::to_string(value.GetIntValue());
-  }
-  if (value.IsBool()) {
-    return value.GetBoolValue() ? "true" : "false";
-  }
-  if (value.IsFloat()) {
-    return std::to_string(value.GetFloatValue());
-  }
-  if (value.IsObject()) {
-    const auto obj = value.GetObject();
-    switch (obj->kind()) {
-      case ObjectKind::kNativeFunction:
-      case ObjectKind::kFunction:
-        return absl::StrFormat("<function>@%d", IdentityHash(runtime, obj));
-      case ObjectKind::kString: {
-        const auto string_obj = static_cast<StringObject*>(obj);
-        return std::string(string_obj->GetCharsPtr(), string_obj->length());
-      }
-      case ObjectKind::kArray:
-        return absl::StrFormat("<array>@%d", IdentityHash(runtime, obj));
-      default:
-        return absl::StrFormat("<object>@%d", IdentityHash(runtime, obj));
-    }
-  }
-  return "unknown";
-}
-int VMIntrinsics::IdentityHash(Runtime* runtime, Object* object) {
-  const auto ptr = reinterpret_cast<uintptr_t>(object);
-  return (ptr >> 32) + (ptr & 0xFFFF) * 13;
-}
 }  // namespace runtime
 }  // namespace lang
 }  // namespace wersalka

@@ -158,6 +158,10 @@ GCPtr<ShapedObject::ValueArray> ShapedObject::ValueArray::Grow(
   }
   return arr;
 }
+GCPtr<ModuleMetaObject> ModuleMetaObject::New(GC* gc, Tagged<StringObject> name,
+                                              const bool anonymous) {
+  return gc->New<ModuleMetaObject>(name, anonymous);
+}
 GCPtr<ShapedObject> ShapedObject::New(GC* gc, Tagged<Shape> shape) {
   const int slot_count = std::max(shape->slot_index() + 1, 0);
   const auto values = ValueArray::New(gc, slot_count);

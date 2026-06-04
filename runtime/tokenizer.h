@@ -48,7 +48,7 @@ enum class TokenKind {
   kTemplateSegment, kTemplateExprBegin, kTemplateExprEnd,
 
   // keywords
-  kVar, kIf, kWhile, kElse, kIn, kFor, kFunc, kReturn, kNew,
+  kVar, kIf, kWhile, kElse, kIn, kFor, kFunc, kReturn, kNew, kModule,
   kTry, kCatch, kFinally, kThrow,
 
   kReserved
@@ -85,7 +85,7 @@ struct Token : ZoneObject {
 class Tokenizer {
  public:
   Tokenizer(Zone* zone, DiagnosticReporter* diagnostic,
-            const ZonePtr<SourceFile> source_file)
+            const SourceFile* source_file)
       : zone_(zone),
         diagnostic_(diagnostic),
         source_(source_file->source()),
@@ -142,7 +142,7 @@ class Tokenizer {
   Token current_;
   std::stack<State> state_;
   std::string scratch_buffer_;
-  ZonePtr<SourceFile> source_file_;
+  const SourceFile* source_file_;
 };
 
 }  // namespace runtime

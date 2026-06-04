@@ -7,6 +7,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "runtime/gc/gc.h"
+#include "runtime/source.h"
 #include "runtime/vm/object_impl.h"
 
 namespace wersalka {
@@ -51,6 +52,8 @@ class Builtins {
 
   void RegisterBuiltIns() const;
 
+  const SourceFile& dummy_source_file() const { return dummy_source_file_; }
+
   FixedShape Shape_GCStats =
       CreateFixedShape({"allocated_bytes", "alive_bytes"});
   FixedShape Shape_Exception =
@@ -61,6 +64,8 @@ class Builtins {
  private:
   FixedShape CreateFixedShape(
       std::initializer_list<std::string_view> fields) const;
+
+  SourceFile dummy_source_file_{""};
 };
 
 }  // namespace runtime

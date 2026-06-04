@@ -17,17 +17,111 @@ namespace {
 constexpr auto kDebugDisassembly = true;
 constexpr auto kDebugDisplayLines = false;
 }  // namespace
+GCPtr<FunctionObject> CodeGenerator::CompileFunctionObject(
+    ZonePtr<ASTFunctionDecl> function_decl) {
+  const auto code_object =
+      CompileCodeObject(function_decl->name, function_decl->params.size(),
+                        [&](LocalsTable& locals) {
+                          // push args, args starts from local index 0
+                          for (const auto arg : function_decl->params) {
+                            locals.DefineVar(arg);
+                          }
 
-ZonePtr<CodeObject> CodeGenerator::CreateCodeObject(
-    ZonePtr<ASTFunctionDecl> ast_func) {
+                          // compile function itself
+                          CompileStmt(locals, function_decl->block);
+                        });
+  const auto interned_name =
+      runtime_->GetPermanentZone()->InternString(function_decl->name);
+  return runtime_->gc()->New<FunctionObject>(interned_name, code_object);
+}
+GCPtr<FunctionObject> CodeGenerator::CompileInitObject(
+    ZonePtrList<ASTGlobalDecl> globals,
+    ZonePtrList<ASTModuleDecl> inner_modules) {
+  constexpr auto func_name = "__module_init";
+  constexpr auto guard_name = "__init_guard";
+  const auto code_object =
+      CompileCodeObject(func_name, 1, [&](LocalsTable& locals) {
+        // args:
+        // 0 - uninitialized module object instance
+
+        // static initialization guard
+        const auto init_label = builder_.NewLabel();
+        builder_.EmitVarLocal(Opcode::kLoadLocal, 0);
+        builder_.EmitPushConst(ConstantDesc::CreateString(guard_name));
+        builder_.Emit(Opcode::kGetField);
+
+        builder_.EmitPushConst(ConstantDesc::CreateBool(true));
+        builder_.Emit(Opcode::kCmpEq);
+        builder_.EmitJump(Opcode::kJmpIfFalse, init_label);
+        builder_.EmitPushConst(ConstantDesc::CreateNull());
+        builder_.Emit(Opcode::kReturn);
+
+        builder_.BindLabel(init_label);
+
+        builder_.EmitVarLocal(Opcode::kLoadLocal, 0);
+        builder_.EmitPushConst(ConstantDesc::CreateString(guard_name));
+        builder_.EmitPushConst(ConstantDesc::CreateBool(true));
+        builder_.Emit(Opcode::kSetField);
+        // init globals
+        for (const auto global : globals) {
+          builder_.EmitVarLocal(Opcode::kLoadLocal, 0);
+          builder_.EmitPushConst(ConstantDesc::CreateString(global->name));
+          CompileExpr(locals, global->init);
+          builder_.Emit(Opcode::kSetField);
+        }
+
+        // init inner modules
+        for (const auto inner_module : inner_modules) {
+          // callee: inner_module_obj.__module_init
+          builder_.EmitVarLocal(Opcode::kLoadLocal, 0);
+          builder_.EmitPushConst(
+              ConstantDesc::CreateString(inner_module->name));
+          builder_.Emit(Opcode::kGetField);
+          builder_.EmitPushConst(ConstantDesc::CreateString(func_name));
+          builder_.Emit(Opcode::kGetField);
+
+          // argument: inner_module_obj
+          builder_.EmitVarLocal(Opcode::kLoadLocal, 0);
+          builder_.EmitPushConst(
+              ConstantDesc::CreateString(inner_module->name));
+          builder_.Emit(Opcode::kGetField);
+
+          builder_.EmitInvoke(Opcode::kInvoke, 1);
+          builder_.Emit(Opcode::kPop);
+        }
+      });
+  const auto interned_init_name =
+      runtime_->GetPermanentZone()->InternString(func_name);
+  return runtime_->gc()->New<FunctionObject>(interned_init_name, code_object);
+}
+ZonePtr<CodeObject> CodeGenerator::CompileImportStub(ZoneStr name) {
+  return CompileCodeObject(name, 1, [&](LocalsTable& locals) {
+    const auto module_slot = locals.DefineSyntheticVar();
+
+    // __load_module(name) -> module
+    builder_.EmitPushConst(ConstantDesc::CreateString("__load_module"));
+    builder_.Emit(Opcode::kLoadGlobal);
+    builder_.EmitVarLocal(Opcode::kLoadLocal, 0);
+    builder_.EmitInvoke(Opcode::kInvoke, 1);
+    builder_.EmitVarLocal(Opcode::kStoreLocal, module_slot);
+
+    // module.__module_init(module) — idempotent via __init_guard
+    builder_.EmitVarLocal(Opcode::kLoadLocal, module_slot);
+    builder_.EmitPushConst(ConstantDesc::CreateString("__module_init"));
+    builder_.Emit(Opcode::kGetField);
+    builder_.EmitVarLocal(Opcode::kLoadLocal, module_slot);
+    builder_.EmitInvoke(Opcode::kInvoke, 1);
+    builder_.Emit(Opcode::kPop);
+
+    builder_.EmitVarLocal(Opcode::kLoadLocal, module_slot);
+    builder_.Emit(Opcode::kReturn);
+  });
+}
+ZonePtr<CodeObject> CodeGenerator::CompileCodeObject(ZoneStr debug_name,
+                                                     int params, CodeGenFn op) {
   LocalsTable locals(zone_, 0);
 
-  // push args, args starts from local index 0
-  for (const auto arg : ast_func->params) {
-    locals.DefineVar(arg);
-  }
-
-  CompileStmt(locals, ast_func->block);
+  op(locals);
 
   // native return check
   if (!builder_.instructions().empty() &&
@@ -44,12 +138,12 @@ ZonePtr<CodeObject> CodeGenerator::CreateCodeObject(
       instructions, constants,
       rt_zone->CopyArray(builder_.debug_info().ToSpan()),
       rt_zone->CopyArray(try_catch_blocks_.ToSpan()),
-      ast_func->params.size(),                        // arg count
+      params,                                         // arg count
       ComputeMaxStackDepth(instructions, constants),  // max stack TODO
-      locals.max_locals());
+      std::max(locals.max_locals(), params));
 
   if (kDebugDisassembly) {
-    std::cout << absl::StrFormat("Disassembly `%s`\n", ast_func->name);
+    std::cout << absl::StrFormat("Disassembly `%s`\n", debug_name);
     BytecodeDisassembler(code_object, kDebugDisplayLines)
         .Disassemble(std::cout);
     std::cout << std::endl;
@@ -176,12 +270,8 @@ void CodeGenerator::CompileExpr(LocalsTable& locals, ZonePtr<ASTExpr> expr) {
     }
     case ASTNode::Kind::kIdentExpr: {
       const auto ident_expr = Cast<ASTIdentExpr>(expr);
-      const auto slot = locals.LookupVar(ident_expr->ident);
-      if (slot) {
-        builder_.EmitVarLocal(Opcode::kLoadLocal, *slot);
-      } else {
-        builder_.EmitVarGlobal(Opcode::kLoadGlobal, ident_expr->ident);
-      }
+      CompileIdent(locals, ident_expr->ident, /*is_write=*/false,
+                   ident_expr->span());
       break;
     }
     case ASTNode::Kind::kCallExpr: {
@@ -236,7 +326,8 @@ void CodeGenerator::CompileBinaryExpr(LocalsTable& locals,
                                       ZonePtr<ASTBinaryExpr> expr) {
   // special cases
   if (expr->op == ASTBinaryExpr::Operator::kExp) {
-    builder_.EmitVarGlobal(Opcode::kLoadGlobal, "__builtin_exp");
+    builder_.EmitPushConst(ConstantDesc::CreateString("__builtin_exp"));
+    builder_.Emit(Opcode::kLoadGlobal);
     CompileExpr(locals, expr->left);
     CompileExpr(locals, expr->right);
     builder_.EmitInvoke(Opcode::kInvoke, 2);
@@ -249,6 +340,7 @@ void CodeGenerator::CompileBinaryExpr(LocalsTable& locals,
     CompileExpr(locals, expr->right);
     builder_.Emit(Opcode::kCmpEq);
     builder_.Emit(Opcode::kNeg);
+    return;
   }
 
   // normal cases
@@ -427,13 +519,9 @@ void CodeGenerator::CompileLValue(LocalsTable& locals,
                                   ZonePtr<ASTExpr> target) {
   if (target->kind() == ASTNode::Kind::kIdentExpr) {
     const auto ident_expr = Cast<ASTIdentExpr>(target);
-    const auto slot = locals.LookupVar(ident_expr->ident);
     builder_.Emit(Opcode::kDup);
-    if (slot) {
-      builder_.EmitVarLocal(Opcode::kStoreLocal, *slot);
-    } else {
-      builder_.EmitVarGlobal(Opcode::kStoreGlobal, ident_expr->ident);
-    }
+    CompileIdent(locals, ident_expr->ident, /*is_write=*/true,
+                 ident_expr->span());
   } else if (target->kind() == ASTNode::Kind::kArrayExpr) {
     const auto array_expr = Cast<ASTArrayExpr>(target);
     if (array_expr->args.size() != 1) {
@@ -471,12 +559,8 @@ void CodeGenerator::CompileLValue(LocalsTable& locals,
 void CodeGenerator::CompileRValue(LocalsTable& locals, ZonePtr<ASTExpr> value) {
   if (value->kind() == ASTNode::Kind::kIdentExpr) {
     const auto ident_expr = Cast<ASTIdentExpr>(value);
-    const auto slot = locals.LookupVar(ident_expr->ident);
-    if (slot) {
-      builder_.EmitVarLocal(Opcode::kLoadLocal, *slot);
-    } else {
-      builder_.EmitVarGlobal(Opcode::kLoadGlobal, ident_expr->ident);
-    }
+    CompileIdent(locals, ident_expr->ident, /*is_write=*/false,
+                 ident_expr->span());
   } else if (value->kind() == ASTNode::Kind::kArrayExpr) {
     const auto array_expr = Cast<ASTArrayExpr>(value);
     if (array_expr->args.size() != 1) {
@@ -503,6 +587,41 @@ void CodeGenerator::CompileRValue(LocalsTable& locals, ZonePtr<ASTExpr> value) {
                           "local variables or global symbols")
             .WithLabel(value->span(), "non-assignable left expression"));
   }
+}
+void CodeGenerator::CompileIdent(LocalsTable& locals,
+                                 const std::string_view name,
+                                 const bool is_write, const TextSpan span) {
+  if (const auto slot = locals.LookupVar(name)) {
+    builder_.EmitVarLocal(is_write ? Opcode::kStoreLocal : Opcode::kLoadLocal,
+                          *slot);
+    return;
+  }
+
+  bool resolved_as_member = false;
+  bool resolved_as_module_name = false;
+  for (auto it = lexical_scopes_.rbegin(); it != lexical_scopes_.rend(); ++it) {
+    if (it->members.contains(name)) {
+      resolved_as_member = true;
+      break;
+    }
+    if (!it->name.empty() && it->name == name) {
+      resolved_as_module_name = true;
+      break;
+    }
+  }
+
+  if (is_write && !resolved_as_member) {
+    reporter_->Report(
+        Diagnostic::Error(
+            source_file_,
+            absl::StrFormat("Assignment to undeclared global `%s`", name))
+            .WithLabel(span, "no enclosing module declares this name"));
+  } else if (!is_write && !resolved_as_member && !resolved_as_module_name) {
+    // fall through to builtins
+  }
+
+  builder_.EmitPushConst(ConstantDesc::CreateString(name));
+  builder_.Emit(is_write ? Opcode::kStoreGlobal : Opcode::kLoadGlobal);
 }
 void CodeGenerator::CompileTryStmt(LocalsTable& locals,
                                    ZonePtr<ASTTryStmt> stmt) {

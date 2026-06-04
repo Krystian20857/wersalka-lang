@@ -57,22 +57,42 @@ class StringObject : public Object {
   int length_;
 };
 
+struct ModuleAlias {
+  std::string_view name;
+  ShapedObject* module;
+};
+
 class FunctionObject : public Object {
  public:
   static constexpr auto kKind = ObjectKind::kFunction;
 
   ZoneStr name() const { return name_; }
   ZonePtr<CodeObject> code_obj() const { return code_obj_; }
+  Tagged<ShapedObject> module() const { return module_; }
+  std::span<const ModuleAlias> ancestor_aliases() const {
+    return ancestor_aliases_;
+  }
+
+  void SetResolutionContext(Tagged<ShapedObject> module,
+                            std::span<const ModuleAlias> aliases) {
+    module_ = module;
+    ancestor_aliases_ = aliases;
+  }
 
  private:
   explicit FunctionObject(const ZoneStr name,
                           const ZonePtr<CodeObject> code_obj)
-      : Object(ObjectKind::kFunction), name_(name), code_obj_(code_obj) {}
+      : Object(ObjectKind::kFunction),
+        name_(name),
+        code_obj_(code_obj) {}
 
   friend class GC;
+  friend class GCVisitor;
 
   ZoneStr name_;
   ZonePtr<CodeObject> code_obj_;
+  Tagged<ShapedObject> module_;
+  std::span<const ModuleAlias> ancestor_aliases_;
 };
 
 class ArrayObject : public Object {
@@ -114,6 +134,7 @@ class Shape : public Object {
   static constexpr auto kKind = ObjectKind::kShape;
 
   Tagged<Shape> parent() const { return parent_; }
+  Tagged<StringObject> field_name() const { return field_name_; }
   int slot_index() const { return slot_index_; }
   int transition_count() const {
     return transitions_.IsNull() ? 0 : transitions_->size_;
@@ -243,6 +264,28 @@ class ShapedObject : public Object {
 
   Tagged<Shape> shape_;
   Tagged<ValueArray> values_;
+};
+
+class ModuleMetaObject : public Object {
+ public:
+  static constexpr auto kKind = ObjectKind::kModuleMeta;
+
+  Tagged<StringObject> name() const { return name_; }
+  bool anonymous() const { return anonymous_; }
+
+  static GCPtr<ModuleMetaObject> New(GC* gc, Tagged<StringObject> name,
+                                     bool anonymous);
+
+ private:
+  explicit ModuleMetaObject(const Tagged<StringObject> name,
+                            const bool anonymous)
+      : Object(ObjectKind::kModuleMeta), name_(name), anonymous_(anonymous) {}
+
+  friend class GC;
+  friend class GCVisitor;
+
+  Tagged<StringObject> name_;
+  bool anonymous_;
 };
 
 }  // namespace runtime

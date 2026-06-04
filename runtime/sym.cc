@@ -45,6 +45,7 @@ int LocalsTable::DefineVar(const std::string_view name) {
   return slot;
 }
 int LocalsTable::DefineSyntheticVar() {
+  // TODO: those should be unnamed
   return DefineVar(
       zone_->InternString(absl::StrFormat("__tmp_%d", ++synthetic_id_)));
 }

@@ -28,8 +28,8 @@ constexpr auto kOpcodes =
 
         DEFINE_OPCODE("LOAD_LOCAL",       0, 1),
         DEFINE_OPCODE("STORE_LOCAL",      1, 0),
-        DEFINE_OPCODE("LOAD_GLOBAL",      0, 1),
-        DEFINE_OPCODE("STORE_GLOBAL",     1, 0),
+        DEFINE_OPCODE("LOAD_GLOBAL",      1, 1),
+        DEFINE_OPCODE("STORE_GLOBAL",     2, 0),
 
         DEFINE_OPCODE("JMP",              0, 0),
         DEFINE_OPCODE("JMP_IF_TRUE",      1, 0),
@@ -84,6 +84,9 @@ ConstantDesc ConstantDesc::CreateUInt(const uint64_t value) {
   return {.kind = Kind::kUInt, .uint_v = value};
 }
 ConstantDesc ConstantDesc::CreateNull() { return {.kind = Kind::kNull}; }
+ConstantDesc ConstantDesc::CreateBool(bool value) {
+  return {.kind = Kind::kBool, .bool_v = value};
+}
 ConstantDesc ConstantDesc::CreateString(const std::string_view str) {
   // ReSharper disable once CppDFALocalValueEscapesFunction
   return {.kind = Kind::kString, .str_v = str};
@@ -117,13 +120,6 @@ int BytecodeBuilder::Emit(const Opcode opcode, const uint16_t c1,
   instructions_.Add(zone_, Instr{opcode, c1, c2});
   debug_info_.Add(zone_, DebugInfo{current_line_});
   return bci;
-}
-int BytecodeBuilder::EmitVarGlobal(Opcode opcode, ZoneStr symbol_name) {
-  CHECK(opcode == Opcode::kLoadGlobal || opcode == Opcode::kStoreGlobal);
-  const auto constant_idx =
-      AddConstant(ConstantDesc{.kind = ConstantDesc::Kind::kString,
-                               .str_v = zone_->InternString(symbol_name)});
-  return Emit(opcode, 0, constant_idx);
 }
 int BytecodeBuilder::EmitVarLocal(Opcode opcode, uint16_t slot) {
   CHECK(opcode == Opcode::kLoadLocal || opcode == Opcode::kStoreLocal);
@@ -176,14 +172,6 @@ void BytecodeDisassembler::Disassemble(std::ostream& stream) const {
       case Opcode::kLoadLocal:
       case Opcode::kStoreLocal: {
         stream << " " << absl::StrFormat("`%d`", instr.c1);
-        break;
-      }
-      case Opcode::kLoadGlobal:
-      case Opcode::kStoreGlobal: {
-        stream << " "
-               << absl::StrFormat(
-                      "`%s`",
-                      FormatConstant(code_object_->constants[instr.c2]));
         break;
       }
       case Opcode::kJmp:

@@ -14,11 +14,13 @@
 namespace wersalka {
 namespace lang {
 namespace runtime {
+struct ASTGlobalDecl;
 
 struct ASTExpr;
 struct ASTStmt;
 struct ASTBlockStmt;
 struct ASTFunctionDecl;
+struct ASTModuleDecl;
 struct ASTIdentExpr;
 
 class ASTNode : public ZoneObject {
@@ -29,6 +31,8 @@ class ASTNode : public ZoneObject {
     // skeleton
     kCompileUnit,
     kFunctionDecl,
+    kGlobalDecl,
+    kModuleDecl,
 
     // stmts
     kBlockStmt,
@@ -85,12 +89,50 @@ struct ASTCompileUnit : ASTNode {
   static constexpr auto kKind = Kind::kCompileUnit;
 
   explicit ASTCompileUnit(const TextSpan& span,
+                          const ZonePtrList<ASTGlobalDecl>& globals,
                           const ZonePtrList<ASTFunctionDecl>& functions,
+                          const ZonePtrList<ASTModuleDecl>& inner_modules,
                           const ZonePtrList<ASTStmt>& stmts)
-      : ASTNode(Kind::kCompileUnit, span), functions(functions), stmts(stmts) {}
+      : ASTNode(Kind::kCompileUnit, span),
+        globals(globals),
+        functions(functions),
+        inner_modules(inner_modules),
+        stmts(stmts) {}
 
+  ZonePtrList<ASTGlobalDecl> globals;
   ZonePtrList<ASTFunctionDecl> functions;
+  ZonePtrList<ASTModuleDecl> inner_modules;
   ZonePtrList<ASTStmt> stmts;
+};
+
+struct ASTGlobalDecl : ASTNode {
+  static constexpr auto kKind = Kind::kGlobalDecl;
+
+  explicit ASTGlobalDecl(const TextSpan& span, const ZoneStr name,
+                         const ZonePtr<ASTExpr> init)
+      : ASTNode(Kind::kGlobalDecl, span), name(name), init(init) {}
+
+  ZoneStr name;
+  ZonePtr<ASTExpr> init;
+};
+
+struct ASTModuleDecl : ASTNode {
+  static constexpr auto kKind = Kind::kModuleDecl;
+
+  explicit ASTModuleDecl(const TextSpan& span, const ZoneStr name,
+                         const ZonePtrList<ASTGlobalDecl>& globals,
+                         const ZonePtrList<ASTFunctionDecl>& functions,
+                         const ZonePtrList<ASTModuleDecl>& inner_modules)
+      : ASTNode(Kind::kModuleDecl, span),
+        name(name),
+        globals(globals),
+        functions(functions),
+        inner_modules(inner_modules) {}
+
+  ZoneStr name;
+  ZonePtrList<ASTGlobalDecl> globals;
+  ZonePtrList<ASTFunctionDecl> functions;
+  ZonePtrList<ASTModuleDecl> inner_modules;
 };
 
 struct ASTFunctionDecl : ASTNode {

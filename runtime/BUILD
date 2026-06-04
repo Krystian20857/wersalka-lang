@@ -22,6 +22,7 @@ cc_library(
         "vm/runtime.cc",
         "vm/value.cc",
         "vm/vm.cc",
+        "vm/vm_intrinsics.cc",
         "zone.cc",
     ],
     hdrs = [
@@ -44,6 +45,7 @@ cc_library(
         "vm/runtime.h",
         "vm/value.h",
         "vm/vm.h",
+        "vm/vm_intrinsics.h",
         "zone.h",
     ],
     visibility = ["//visibility:public"],

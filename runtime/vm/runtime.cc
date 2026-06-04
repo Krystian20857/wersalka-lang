@@ -24,6 +24,9 @@ void Runtime::BindGlobalFunction(std::string_view name, int arg_count,
   builtin_globals_[zone_->InternString(name)] =
       Value::CreateObject(gc_->New<NativeFunctionObject>(arg_count, handler));
 }
+void Runtime::AddRootModule(Value value) {
+  root_modules_.push_back(value);
+}
 Value Runtime::LookupGlobal(std::string_view name) {
   if (auto global = builtin_globals_.find(name);
       global != builtin_globals_.end()) {

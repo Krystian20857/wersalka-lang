@@ -22,14 +22,14 @@ struct DiagnosticLabel {
 };
 
 struct Diagnostic {
-  Diagnostic(const ZonePtr<SourceFile> source_file, const Severity severity,
+  Diagnostic(const SourceFile* source_file, const Severity severity,
              const std::string& message)
       : source_file(source_file), severity(severity), message(message) {}
 
-  static Diagnostic Error(const ZonePtr<SourceFile> source_file, const std::string& message) {
+  static Diagnostic Error(const SourceFile* source_file, const std::string& message) {
     return Diagnostic(source_file, Severity::kError, message);
   }
-  static Diagnostic Warn(const ZonePtr<SourceFile> source_file, const std::string& message) {
+  static Diagnostic Warn(const SourceFile* source_file, const std::string& message) {
     return Diagnostic(source_file, Severity::kWarn, message);
   }
 
@@ -49,7 +49,7 @@ struct Diagnostic {
     return *this;
   }
 
-  ZonePtr<SourceFile> source_file;
+  const SourceFile* source_file;
   Severity severity;
   std::string message;
   std::vector<DiagnosticLabel> labels;

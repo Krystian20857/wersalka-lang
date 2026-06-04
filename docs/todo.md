@@ -1,3 +1,12 @@
-* basic driver, bazel rules for samples
-* modules
 * stdlib
+* (more) arrays, lists, overall collections
+* tuples
+* cinterop (e.g., for raylib)
+* inline caches
+* JIT compiler
+  * at first simple templated interpreter
+  * later experiment with optimizing JIT, profiling, deopt, OSR, etc
+    * CFG SSA IR, predictible inlining
+    * very basic escape analysis
+    * codegen backend(s), reg alloc, insn scheduling, etc
+    * macro assembler, (maybe) custom arch descriptor files, or just use asmjit idk

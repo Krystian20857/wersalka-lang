@@ -35,11 +35,13 @@ struct SourceLocation {
 
 class SourceFile {
  public:
-  explicit SourceFile(const std::string& source) : source_(source) {
+  explicit SourceFile(const std::string& source, std::string module_name = "")
+      : source_(source), module_name_(std::move(module_name)) {
     BuildLineTable();
   }
 
   const std::string& source() const { return source_; }
+  const std::string& module_name() const { return module_name_; }
 
   SourceLocation LocationOf(int offset) const;
 
@@ -47,6 +49,7 @@ class SourceFile {
   void BuildLineTable();
 
   std::string source_;
+  std::string module_name_;
   std::vector<int> line_starts_;
 };
 

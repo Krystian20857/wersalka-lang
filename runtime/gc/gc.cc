@@ -24,8 +24,11 @@ void GCVisitor::WalkObject(Value* value) {
 
   // TODO: walk children here
   switch (handle.GetPtr()->kind()) {
-    case ObjectKind::kFunction:
+    case ObjectKind::kFunction: {
+      const auto fn = static_cast<FunctionObject*>(handle.GetPtr());
+      WalkObject(&fn->module_.AsValue());
       break;
+    }
     case ObjectKind::kNativeFunction:
       break;
     case ObjectKind::kBigInt:
@@ -39,8 +42,7 @@ void GCVisitor::WalkObject(Value* value) {
       break;
     }
     case ObjectKind::kValueArray: {
-      const auto arr =
-          static_cast<ShapedObject::ValueArray*>(handle.GetPtr());
+      const auto arr = static_cast<ShapedObject::ValueArray*>(handle.GetPtr());
       for (auto& slot : arr->GetSlots()) {
         WalkObject(&slot);
       }
@@ -85,10 +87,6 @@ void GCVisitor::WalkRoots(VMThread* thread) {
     }
   }
 
-  for (auto& [name, global] : thread->globals_) {
-    WalkObject(&global);
-  }
-
   for (auto* v = thread->handle_stack_.data(); v < thread->handle_top_; ++v) {
     WalkObject(v);
   }
@@ -100,6 +98,9 @@ void GCVisitor::WalkRoots(Runtime* runtime) {
   }
   for (auto& [name, value] : runtime->functions_) {
     WalkObject(&value);
+  }
+  for (auto root_module : runtime->root_modules()) {
+    WalkObject(&root_module);
   }
 }
 }  // namespace runtime
