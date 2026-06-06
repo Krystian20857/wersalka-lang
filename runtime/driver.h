@@ -9,7 +9,6 @@
 #include <string_view>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "runtime/ast.h"
 #include "runtime/codegen.h"
 #include "runtime/diagnostic.h"
@@ -52,7 +51,6 @@ class Driver {
   struct EnclosingModule {
     std::string_view name;  // empty for anonymous
     GCPtr<ShapedObject> module_object;
-    absl::flat_hash_set<std::string_view> members;
   };
 
   explicit Driver(const DriverConfig& driver_config) : config_(driver_config) {}

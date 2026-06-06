@@ -23,6 +23,9 @@ struct ASTFunctionDecl;
 struct ASTModuleDecl;
 struct ASTIdentExpr;
 
+struct Variable;
+class Scope;
+
 class ASTNode : public ZoneObject {
  public:
   enum class Kind {
@@ -99,6 +102,8 @@ struct ASTCompileUnit : ASTNode {
         inner_modules(inner_modules),
         stmts(stmts) {}
 
+  Scope* scope = nullptr;
+
   ZonePtrList<ASTGlobalDecl> globals;
   ZonePtrList<ASTFunctionDecl> functions;
   ZonePtrList<ASTModuleDecl> inner_modules;
@@ -133,6 +138,8 @@ struct ASTModuleDecl : ASTNode {
   ZonePtrList<ASTGlobalDecl> globals;
   ZonePtrList<ASTFunctionDecl> functions;
   ZonePtrList<ASTModuleDecl> inner_modules;
+
+  Scope* scope = nullptr;
 };
 
 struct ASTFunctionDecl : ASTNode {
@@ -149,6 +156,8 @@ struct ASTFunctionDecl : ASTNode {
   ZoneStr name;
   ZoneList<ZoneStr> params;
   ZonePtr<ASTStmt> block;
+
+  Scope* function_scope = nullptr;
 };
 
 // stmts
@@ -165,6 +174,7 @@ struct ASTBlockStmt : ASTStmt {
       : ASTStmt(Kind::kBlockStmt, span), stmts(stmts) {}
 
   ZonePtrList<ASTStmt> stmts;
+  Scope* scope = nullptr;
 };
 
 struct ASTVarStmt : ASTStmt {
@@ -175,6 +185,7 @@ struct ASTVarStmt : ASTStmt {
       : ASTStmt(Kind::kVarStmt, span), name(name), init_expr(init_expr) {}
   ZoneStr name;
   std::optional<ZonePtr<ASTExpr>> init_expr;
+  Variable* binding = nullptr;
 };
 
 struct ASTExprStmt : ASTStmt {
@@ -359,6 +370,7 @@ struct ASTIdentExpr : ASTExpr {
       : ASTExpr(Kind::kIdentExpr, span), ident(ident) {}
 
   ZoneStr ident;
+  Variable* binding = nullptr;
 };
 
 struct ASTAssignExpr : ASTExpr {

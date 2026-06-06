@@ -10,6 +10,7 @@
 #include "runtime/codegen.h"
 #include "runtime/diagnostic.h"
 #include "runtime/parser.h"
+#include "runtime/scope.h"
 #include "runtime/tokenizer.h"
 #include "runtime/vm/vm.h"
 
@@ -81,10 +82,12 @@ func main() {
 
   if (Is<ASTCompileUnit>(ast)) {
     const auto compile_unit = Cast<ASTCompileUnit>(ast);
+    ScopeAnalyzer analyzer(&zone, &reporter, source_file.get());
+    analyzer.AnalyzeCompileUnit(compile_unit, {});
     for (const auto function : compile_unit->functions) {
       Zone codegen_zone;
       CodeGenerator codegen(&runtime, &reporter, &codegen_zone,
-                            source_file.get(), {});
+                            source_file.get());
       const auto func_obj = codegen.CompileFunctionObject(function);
       std::cout << absl::StrFormat("MAX_STACK %d\nMAX_LOCALS %d\n",
                                    func_obj->code_obj()->max_stack,

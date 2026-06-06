@@ -1,6 +1,7 @@
 * stdlib
 * (more) arrays, lists, overall collections
 * tuples
+* closure
 * cinterop (e.g., for raylib)
 * inline caches
 * JIT compiler

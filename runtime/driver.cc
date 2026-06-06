@@ -14,6 +14,7 @@
 #include "runtime/codegen.h"
 #include "runtime/diagnostic.h"
 #include "runtime/parser.h"
+#include "runtime/scope.h"
 #include "runtime/source.h"
 #include "runtime/tokenizer.h"
 #include "runtime/vm/vm.h"
@@ -38,6 +39,11 @@ Value Driver::CompileFile(const DriverContext* driver_ctx,
     return Value::CreateNull();
   }
   if (Is<ASTCompileUnit>(ast)) {
+    ScopeAnalyzer analyzer(&zone, reporter, source_file);
+    analyzer.AnalyzeCompileUnit(Cast<ASTCompileUnit>(ast), {});
+    if (reporter->HasError()) {
+      return Value::CreateNull();
+    }
     std::vector<EnclosingModule> empty_chain;
     return CompileModuleOrUnit(driver_ctx, native_ctx,
                                Cast<ASTCompileUnit>(ast), source_file,
@@ -95,26 +101,9 @@ Value Driver::CompileModuleOrUnit(
                              runtime->gc(), module_name, anonymous))  // value
   );
 
-  absl::flat_hash_set<std::string_view> current_members;
-  for (const auto function : functions) {
-    current_members.insert(function->name);
-  }
-  for (const auto global : globals) {
-    current_members.insert(global->name);
-  }
-  for (const auto inner_module : inner_modules) {
-    current_members.insert(inner_module->name);
-  }
-
-  std::vector<ModuleScope> lexical_scopes;
-  lexical_scopes.reserve(parent_chain.size() + 1);
-  for (const auto& parent : parent_chain) {
-    lexical_scopes.push_back(ModuleScope{parent.name, parent.members});
-  }
   const auto current_name_interned =
       anonymous ? std::string_view{}
                 : perm_zone->InternString(module_name->ToStringView());
-  lexical_scopes.push_back(ModuleScope{current_name_interned, current_members});
 
   int alias_count = 0;
   if (!anonymous) {
@@ -143,8 +132,7 @@ Value Driver::CompileModuleOrUnit(
   // functions
   for (const auto function : functions) {
     Zone codegen_zone;
-    CodeGenerator code_generator(runtime, reporter, &codegen_zone, source_file,
-                                 lexical_scopes);
+    CodeGenerator code_generator(runtime, reporter, &codegen_zone, source_file);
     const auto function_object = code_generator.CompileFunctionObject(function);
     if (reporter->HasError()) {
       // TODO: error -> exception adapter
@@ -163,8 +151,7 @@ Value Driver::CompileModuleOrUnit(
 
   // init block
   Zone codegen_zone;
-  CodeGenerator code_generator(runtime, reporter, &codegen_zone, source_file,
-                               lexical_scopes);
+  CodeGenerator code_generator(runtime, reporter, &codegen_zone, source_file);
   const auto init_function_object =
       code_generator.CompileInitObject(globals, inner_modules);
   init_function_object->SetResolutionContext(module_object, aliases);
@@ -179,7 +166,7 @@ Value Driver::CompileModuleOrUnit(
   // extend the chain for inner modules.
   std::vector<EnclosingModule> extended_chain = parent_chain;
   extended_chain.push_back(
-      EnclosingModule{current_name_interned, module_object, current_members});
+      EnclosingModule{current_name_interned, module_object});
 
   // inner modules
   for (auto inner_module : inner_modules) {
@@ -429,7 +416,7 @@ GCPtr<FunctionObject> Driver::GenerateFunction(const DriverContext* driver_ctx,
   const auto runtime = driver_ctx->runtime;
   Zone codegen_zone;
   CodeGenerator code_generator(runtime, driver_ctx->reporter, &codegen_zone,
-                               &runtime->builtins()->dummy_source_file(), {});
+                               &runtime->builtins()->dummy_source_file());
   const auto interned_name = runtime->GetPermanentZone()->InternString(name);
   return driver_ctx->runtime->gc()->New<FunctionObject>(
       interned_name, op(interned_name, code_generator));
