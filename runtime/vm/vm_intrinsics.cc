@@ -56,6 +56,10 @@ std::string_view VMIntrinsics::GetValueTypeName(Value value) {
         return "array";
       case ObjectKind::kModuleMeta:
         return "module";
+      case ObjectKind::kClosure:
+        return "closure";
+      case ObjectKind::kClosureContext:
+        return "closure_context";
     }
   }
   ABSL_UNREACHABLE();

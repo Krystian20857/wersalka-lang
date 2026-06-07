@@ -45,8 +45,16 @@ func run_wrapped(name, f) {
   print("");
 }
 
+func __func() { }
+var __closure = func () {};
+
+func function_and_closure() {
+  print("{type(__func)}, {type(__closure)}");
+}
+
 func __main__() {
   run_wrapped("basic closure", basic_closure);
   run_wrapped("nested closure", nested_closure);
   run_wrapped("array of closures", array_of_closures);
+  run_wrapped("function and closure", function_and_closure);
 }

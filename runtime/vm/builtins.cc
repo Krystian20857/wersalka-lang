@@ -94,6 +94,12 @@ void Builtins::RegisterBuiltIns() const {
         }
         return ArrayObject::New(ctx->runtime->gc(), size.GetIntValue());
       });
+  runtime_->BindGlobalFunction(
+      "type", 1, [](NativeContext* ctx, auto args) -> Value {
+        Value value = args[0];
+        return StringObject::New(ctx->runtime->gc(),
+                                 VMIntrinsics::GetValueTypeName(value));
+      });
 }
 FixedShape Builtins::CreateFixedShape(
     std::initializer_list<std::string_view> fields) const {
