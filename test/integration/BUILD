@@ -34,3 +34,9 @@ wersalka_test(
     name = "builtins",
     srcs = "builtins_test.w",
 )
+
+wersalka_test(
+    name = "closures",
+    srcs = "closures_test.w",
+    deps = ["//stdlib"],
+)
