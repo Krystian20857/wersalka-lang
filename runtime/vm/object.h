@@ -23,7 +23,9 @@ enum class ObjectKind {
   kShapedObject,  // `instance` of shape
   kValueArray,    // private backing store for ShapedObject
   kArray,
-  kModuleMeta
+  kModuleMeta,
+  kClosure,
+  kClosureContext
 };
 
 class Object {

@@ -132,14 +132,14 @@ Value Driver::CompileModuleOrUnit(
   // functions
   for (const auto function : functions) {
     Zone codegen_zone;
-    CodeGenerator code_generator(runtime, reporter, &codegen_zone, source_file);
+    CodeGenerator code_generator(runtime, reporter, &codegen_zone, source_file,
+                                 module_object, aliases);
     const auto function_object = code_generator.CompileFunctionObject(function);
     if (reporter->HasError()) {
       // TODO: error -> exception adapter
       // native_ctx->exception
       return Value::CreateNull();
     }
-    function_object->SetResolutionContext(module_object, aliases);
     VMIntrinsics::SetField(
         native_ctx,
         Value::CreateObject(module_object),  // object
@@ -151,10 +151,10 @@ Value Driver::CompileModuleOrUnit(
 
   // init block
   Zone codegen_zone;
-  CodeGenerator code_generator(runtime, reporter, &codegen_zone, source_file);
+  CodeGenerator code_generator(runtime, reporter, &codegen_zone, source_file,
+                               module_object, aliases);
   const auto init_function_object =
       code_generator.CompileInitObject(globals, inner_modules);
-  init_function_object->SetResolutionContext(module_object, aliases);
   VMIntrinsics::SetField(
       native_ctx,
       Value::CreateObject(module_object),  // object
@@ -416,7 +416,8 @@ GCPtr<FunctionObject> Driver::GenerateFunction(const DriverContext* driver_ctx,
   const auto runtime = driver_ctx->runtime;
   Zone codegen_zone;
   CodeGenerator code_generator(runtime, driver_ctx->reporter, &codegen_zone,
-                               &runtime->builtins()->dummy_source_file());
+                               &runtime->builtins()->dummy_source_file(),
+                               Value::CreateNull(), {});
   const auto interned_name = runtime->GetPermanentZone()->InternString(name);
   return driver_ctx->runtime->gc()->New<FunctionObject>(
       interned_name, op(interned_name, code_generator));

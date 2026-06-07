@@ -15,6 +15,7 @@ namespace runtime {
 
 class ShapedObject;
 class ShapeTree;
+class ClosureContextObject;
 
 class StringObject : public Object {
  public:
@@ -73,18 +74,17 @@ class FunctionObject : public Object {
     return ancestor_aliases_;
   }
 
-  void SetResolutionContext(Tagged<ShapedObject> module,
-                            std::span<const ModuleAlias> aliases) {
-    module_ = module;
-    ancestor_aliases_ = aliases;
-  }
-
  private:
   explicit FunctionObject(const ZoneStr name,
-                          const ZonePtr<CodeObject> code_obj)
+                          const ZonePtr<CodeObject> code_obj,
+                          const Tagged<ShapedObject> module =
+                              Tagged<ShapedObject>(Value::CreateNull()),
+                          const std::span<const ModuleAlias> aliases = {})
       : Object(ObjectKind::kFunction),
         name_(name),
-        code_obj_(code_obj) {}
+        code_obj_(code_obj),
+        module_(module),
+        ancestor_aliases_(aliases) {}
 
   friend class GC;
   friend class GCVisitor;
@@ -286,6 +286,68 @@ class ModuleMetaObject : public Object {
 
   Tagged<StringObject> name_;
   bool anonymous_;
+};
+
+class ClosureObject : public Object {
+ public:
+  static constexpr auto kKind = ObjectKind::kClosure;
+
+  Tagged<FunctionObject> function() const { return function_; }
+  Tagged<ClosureContextObject> outer_context() const { return outer_context_; }
+
+  static GCPtr<ClosureObject> New(GC* gc, Tagged<FunctionObject> function,
+                                  Tagged<ClosureContextObject> outer_context);
+
+ private:
+  explicit ClosureObject(const Tagged<FunctionObject> function,
+                         const Tagged<ClosureContextObject> outer_context)
+      : Object(ObjectKind::kClosure),
+        function_(function),
+        outer_context_(outer_context) {}
+
+  friend class GC;
+  friend class GCVisitor;
+
+  Tagged<FunctionObject> function_;
+  Tagged<ClosureContextObject> outer_context_;
+};
+
+class ClosureContextObject : public Object {
+ public:
+  static constexpr auto kKind = ObjectKind::kClosureContext;
+  static constexpr auto kParentOffset = kHeaderSize;
+  static constexpr auto kValueCountOffset =
+      kParentOffset + sizeof(Tagged<ClosureContextObject>);
+  static constexpr auto kValuesOffset = kValueCountOffset + sizeof(int);
+
+  static GCPtr<ClosureContextObject> New(GC* gc,
+                                         Tagged<ClosureContextObject> parent,
+                                         int value_count);
+
+  std::span<Value> GetValues() {
+    return std::span(GetValuesPtr(), value_count_);
+  }
+
+  Tagged<ClosureContextObject> parent() const { return parent_; }
+  void set_parent(Tagged<ClosureContextObject> parent) { parent_ = parent; }
+
+ private:
+  explicit ClosureContextObject(const Tagged<ClosureContextObject> parent,
+                                const int value_count)
+      : Object(ObjectKind::kClosureContext),
+        parent_(parent),
+        value_count_(value_count) {}
+
+  friend class GC;
+  friend class GCVisitor;
+
+  Value* GetValuesPtr() {
+    return reinterpret_cast<Value*>(reinterpret_cast<char*>(this) +
+                                    kValuesOffset);
+  }
+
+  Tagged<ClosureContextObject> parent_;  // can be nullptr
+  int value_count_;
 };
 
 }  // namespace runtime

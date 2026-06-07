@@ -89,6 +89,7 @@ class Parser final {
   ZonePtr<ASTExpr> ParseTemplateExpr();
   ZonePtr<ASTExpr> ParseNewExpr();
   ZonePtr<ASTExpr> ParseMemberAccessExpr(ZonePtr<ASTExpr> left);
+  ZonePtr<ASTExpr> ParseClosureExpr();
 
   ZonePtr<ASTStmt> ParseStmt();
   ZonePtr<ASTStmt> ParseBlockStmt();

@@ -162,6 +162,21 @@ GCPtr<ModuleMetaObject> ModuleMetaObject::New(GC* gc, Tagged<StringObject> name,
                                               const bool anonymous) {
   return gc->New<ModuleMetaObject>(name, anonymous);
 }
+GCPtr<ClosureObject> ClosureObject::New(
+    GC* gc, Tagged<FunctionObject> function,
+    Tagged<ClosureContextObject> outer_context) {
+  return gc->New<ClosureObject>(function, outer_context);
+}
+GCPtr<ClosureContextObject> ClosureContextObject::New(
+    GC* gc, Tagged<ClosureContextObject> parent, int value_count) {
+  const auto context_object = gc->NewSized<ClosureContextObject>(
+      sizeof(ClosureContextObject) + value_count * sizeof(Value), parent,
+      value_count);
+  for (auto n = 0; n < value_count; n++) {
+    context_object->GetValues()[n] = Value::CreateNull();
+  }
+  return context_object;
+}
 GCPtr<ShapedObject> ShapedObject::New(GC* gc, Tagged<Shape> shape) {
   const int slot_count = std::max(shape->slot_index() + 1, 0);
   const auto values = ValueArray::New(gc, slot_count);

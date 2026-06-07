@@ -36,6 +36,7 @@ class GC {
 
   virtual void* Alloc(std::size_t size, std::size_t align) = 0;
   virtual void Collect(VMThread* thread) = 0;
+  virtual void MarkPermanent(GCPtr<Object> object) = 0;
 
   virtual GCStats GetStats() const = 0;
 

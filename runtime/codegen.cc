@@ -23,13 +23,17 @@ GCPtr<FunctionObject> CodeGenerator::CompileFunctionObject(
       << "function_decl has not been processed by ScopeAnalyzer";
   const auto user_max_locals =
       std::max(function_decl->function_scope->max_locals(),
-               static_cast<int>(function_decl->params.size()));
+               function_decl->params.size());
   const auto code_object = CompileCodeObject(
-      function_decl->name, function_decl->params.size(), user_max_locals,
-      [&] { CompileStmt(function_decl->block); });
+      function_decl->name, function_decl->params.size(), user_max_locals, [&] {
+        const auto _ = ScopeGuard(this, function_decl->function_scope);
+        EmitContextEntry(function_decl->function_scope);
+        CompileStmt(function_decl->block);
+      });
   const auto interned_name =
       runtime_->GetPermanentZone()->InternString(function_decl->name);
-  return runtime_->gc()->New<FunctionObject>(interned_name, code_object);
+  return runtime_->gc()->New<FunctionObject>(
+      interned_name, code_object, current_module_, ancestor_aliases_);
 }
 
 GCPtr<FunctionObject> CodeGenerator::CompileInitObject(
@@ -87,7 +91,8 @@ GCPtr<FunctionObject> CodeGenerator::CompileInitObject(
   });
   const auto interned_init_name =
       runtime_->GetPermanentZone()->InternString(func_name);
-  return runtime_->gc()->New<FunctionObject>(interned_init_name, code_object);
+  return runtime_->gc()->New<FunctionObject>(
+      interned_init_name, code_object, current_module_, ancestor_aliases_);
 }
 
 ZonePtr<CodeObject> CodeGenerator::CompileImportStub(ZoneStr name) {
@@ -124,9 +129,12 @@ ZonePtr<CodeObject> CodeGenerator::CompileCodeObject(ZoneStr debug_name,
   op();
 
   // native return check
-  if (!builder_.instructions().empty() &&
-      builder_.instructions()[builder_.instructions().size() - 1].op !=
-          Opcode::kReturn) {
+  const auto need_tail_return =
+      (!builder_.instructions().empty() &&
+       builder_.instructions()[builder_.instructions().size() - 1].op !=
+           Opcode::kReturn) ||
+      builder_.instructions().empty();
+  if (need_tail_return) {
     builder_.EmitPushConst(ConstantDesc::CreateNull());
     builder_.Emit(Opcode::kReturn);
   }
@@ -159,15 +167,66 @@ int CodeGenerator::AllocateSyntheticSlot() {
   }
   return slot;
 }
+int CodeGenerator::ComputeContextDepth(Scope* declaring) {
+  int depth = 0;
+  for (Scope* scope = current_scope_; scope != declaring;
+       scope = scope->parent()) {
+    CHECK_NE(scope, nullptr) << "declaring scope is not an ancestor of current";
+    if (scope->need_context()) {
+      depth++;
+    }
+  }
+  return depth;
+}
+
+int CodeGenerator::EmitContextEntry(Scope* scope) {
+  if (!scope->need_context()) {
+    return -1;
+  }
+  const auto save_slot = AllocateSyntheticSlot();
+  builder_.Emit(Opcode::kMakeContext, 0, scope->num_context_slots());
+  builder_.Emit(Opcode::kPushContext, 0, save_slot);
+  if (scope->kind() == Scope::Kind::kFunction) {
+    for (auto* variable : scope->variables()) {
+      if (variable->kind == BindingKind::kParameter && variable->captured) {
+        builder_.EmitVarLocal(Opcode::kLoadLocal, variable->slot);
+        builder_.EmitVarContext(Opcode::kStoreContextSlot, 0,
+                                variable->context_slot);
+      }
+    }
+  }
+  return save_slot;
+}
+
+void CodeGenerator::EmitContextExit(const int save_slot) {
+  if (save_slot < 0) {
+    return;
+  }
+  builder_.Emit(Opcode::kPopContext, 0, save_slot);
+}
 
 void CodeGenerator::CompileStmt(ZonePtr<ASTStmt> stmt) {
   MarkCurrentLine(stmt);
   switch (stmt->kind()) {
     case ASTNode::Kind::kBlockStmt: {
       const auto block_stmt = Cast<ASTBlockStmt>(stmt);
+      const auto _ = ScopeGuard(this, block_stmt->scope);
+
+      const auto save_slot = EmitContextEntry(block_stmt->scope);
+      if (save_slot >= 0) {
+        finally_blocks_.push_back(
+            [this, save_slot] { EmitContextExit(save_slot); });
+      }
+
       for (const auto inner_stmt : block_stmt->stmts) {
         CompileStmt(inner_stmt);
       }
+
+      if (save_slot >= 0) {
+        EmitContextExit(save_slot);
+        finally_blocks_.pop_back();
+      }
+
       break;
     }
     case ASTNode::Kind::kVarStmt: {
@@ -179,7 +238,12 @@ void CodeGenerator::CompileStmt(ZonePtr<ASTStmt> stmt) {
       } else {
         builder_.EmitPushConst(ConstantDesc::CreateNull());
       }
-      builder_.EmitVarLocal(Opcode::kStoreLocal, var_stmt->binding->slot);
+      if (var_stmt->binding->captured) {
+        builder_.EmitVarContext(Opcode::kStoreContextSlot, 0,
+                                var_stmt->binding->context_slot);
+      } else {
+        builder_.EmitVarLocal(Opcode::kStoreLocal, var_stmt->binding->slot);
+      }
       break;
     }
     case ASTNode::Kind::kExprStmt: {
@@ -324,6 +388,11 @@ void CodeGenerator::CompileExpr(ZonePtr<ASTExpr> expr) {
     }
     case ASTNode::Kind::kMemberAccessExpr: {
       CompileRValue(expr);
+      break;
+    }
+    case ASTNode::Kind::kClosureExpr: {
+      const auto closure_expr = Cast<ASTClosureExpr>(expr);
+      CompileClosureExpr(closure_expr);
       break;
     }
     default:
@@ -595,26 +664,54 @@ void CodeGenerator::CompileRValue(ZonePtr<ASTExpr> value) {
             .WithLabel(value->span(), "non-assignable left expression"));
   }
 }
+void CodeGenerator::CompileClosureExpr(ZonePtr<ASTClosureExpr> expr) {
+  CHECK(expr->function_scope != nullptr)
+      << "closure_expr has not been processed by ScopeAnalyzer";
+  CodeGenerator generator(runtime_, reporter_, zone_, source_file_,
+                          current_module_, ancestor_aliases_);
+  const auto closure_name = "closureXXX";  // TODO: proper closure name
+  const auto user_max_locals = std::max(expr->function_scope->max_locals(),
+                                        static_cast<int>(expr->params.size()));
+  const auto code_object = generator.CompileCodeObject(
+      closure_name, expr->params.size(), user_max_locals, [&] {
+        const auto _ = ScopeGuard(&generator, expr->function_scope);
+        generator.EmitContextEntry(expr->function_scope);
+        generator.CompileStmt(expr->block);
+      });
+  const auto function_object = runtime_->gc()->New<FunctionObject>(
+      closure_name, code_object, current_module_, ancestor_aliases_);
+  // FIXME: for now mark as permanent, lifetime is hard here...
+  runtime_->gc()->MarkPermanent(function_object);
+  const auto constant_idx =
+      builder_.AddConstant(ConstantDesc::CreateFunction(function_object));
+  builder_.Emit(Opcode::kClosure, 0, constant_idx);
+}
 
 void CodeGenerator::CompileIdent(ZonePtr<ASTIdentExpr> ident,
                                  const bool is_write) {
   CHECK(ident->binding != nullptr)
       << "ident has not been processed by ScopeAnalyzer";
-  switch (ident->binding->kind) {
+  const auto binding = ident->binding;
+  switch (binding->kind) {
     case BindingKind::kParameter:
     case BindingKind::kLocal: {
-      builder_.EmitVarLocal(is_write ? Opcode::kStoreLocal : Opcode::kLoadLocal,
-                            ident->binding->slot);
+      if (binding->captured) {
+        CHECK(binding->owning_scope != nullptr);
+        const auto depth = ComputeContextDepth(binding->owning_scope);
+        builder_.EmitVarContext(
+            is_write ? Opcode::kStoreContextSlot : Opcode::kLoadContextSlot,
+            depth, binding->context_slot);
+      } else {
+        builder_.EmitVarLocal(
+            is_write ? Opcode::kStoreLocal : Opcode::kLoadLocal, binding->slot);
+      }
       return;
     }
     case BindingKind::kModuleGlobal:
     case BindingKind::kGlobal: {
-      builder_.EmitPushConst(ConstantDesc::CreateString(ident->binding->name));
+      builder_.EmitPushConst(ConstantDesc::CreateString(binding->name));
       builder_.Emit(is_write ? Opcode::kStoreGlobal : Opcode::kLoadGlobal);
       return;
-    }
-    case BindingKind::kContextCaptured: {
-      ABSL_UNREACHABLE();
     }
   }
 }
@@ -648,6 +745,7 @@ void CodeGenerator::CompileTryStmt(ZonePtr<ASTTryStmt> stmt) {
   int first_catch_begin_bci = -1;
   ZoneList<CatchRange> catch_ranges(zone_);
   for (const auto& catch_block : stmt->catch_blocks) {
+    const auto _ = ScopeGuard(this, catch_block.scope);
     const auto catch_begin_bci = builder_.current_bci();
     if (first_catch_begin_bci < 0) {
       first_catch_begin_bci = catch_begin_bci;

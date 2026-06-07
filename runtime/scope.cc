@@ -17,7 +17,8 @@ Scope::Scope(Zone* zone, const Kind kind, Scope* parent)
       parent_(parent),
       variables_(zone),
       members_(zone),
-      free_slots_(zone) {}
+      free_slots_(zone),
+      need_context_(false) {}
 
 Variable* Scope::DeclareVariable(const std::string_view name,
                                  const BindingKind binding_kind,
@@ -26,6 +27,7 @@ Variable* Scope::DeclareVariable(const std::string_view name,
   variable->name = name;
   variable->kind = binding_kind;
   variable->declaration_span = declaration_span;
+  variable->owning_scope = this;
   if (binding_kind == BindingKind::kParameter ||
       binding_kind == BindingKind::kLocal) {
     variable->slot = AllocateSlot();
@@ -79,6 +81,8 @@ void Scope::ReleaseSlot(const int slot) {
   free_slots_.Add(zone_, slot);
 }
 
+int Scope::AllocateContextSlot() { return num_context_slots_++; }
+
 void Scope::ReleaseOwnedSlots() {
   for (int idx = variables_.size() - 1; idx >= 0; idx--) {
     auto* variable = variables_[idx];
@@ -100,8 +104,7 @@ Scope* Scope::EnclosingFunction() {
 
 Scope* Scope::EnclosingModule() {
   for (Scope* scope = this; scope != nullptr; scope = scope->parent_) {
-    if (scope->kind_ == Kind::kModule ||
-        scope->kind_ == Kind::kCompileUnit) {
+    if (scope->kind_ == Kind::kModule || scope->kind_ == Kind::kCompileUnit) {
       return scope;
     }
   }
@@ -168,8 +171,7 @@ Scope* ScopeAnalyzer::AnalyzeModule(
 }
 
 void ScopeAnalyzer::RegisterMembers(
-    Scope* module_scope,
-    const ZonePtrList<ASTGlobalDecl>& globals,
+    Scope* module_scope, const ZonePtrList<ASTGlobalDecl>& globals,
     const ZonePtrList<ASTFunctionDecl>& functions,
     const ZonePtrList<ASTModuleDecl>& inner_modules) {
   for (const auto function_decl : functions) {
@@ -195,6 +197,17 @@ void ScopeAnalyzer::AnalyzeFunction(ZonePtr<ASTFunctionDecl> function_decl,
   }
 
   AnalyzeStmt(function_decl->block, function_scope);
+}
+void ScopeAnalyzer::AnalyzeClosure(ZonePtr<ASTClosureExpr> closure_expr,
+                                   Scope* outer_scope) {
+  const auto closure_scope =
+      zone_->New<Scope>(zone_, Scope::Kind::kFunction, outer_scope);
+  closure_expr->function_scope = closure_scope;
+  for (const auto param_name : closure_expr->params) {
+    closure_scope->DeclareVariable(param_name, BindingKind::kParameter,
+                                   closure_expr->span());
+  }
+  AnalyzeStmt(closure_expr->block, closure_scope);
 }
 
 void ScopeAnalyzer::AnalyzeGlobalInit(ZonePtr<ASTGlobalDecl> global_decl,
@@ -261,11 +274,12 @@ void ScopeAnalyzer::AnalyzeStmt(ZonePtr<ASTStmt> stmt, Scope* current_scope) {
       break;
     }
     case ASTNode::Kind::kTryStmt: {
-      const auto try_stmt = Cast<ASTTryStmt>(stmt);
+      auto try_stmt = Cast<ASTTryStmt>(stmt);
       AnalyzeStmt(try_stmt->try_block, current_scope);
-      for (const auto& catch_block : try_stmt->catch_blocks) {
+      for (auto& catch_block : try_stmt->catch_blocks) {
         const auto catch_scope =
             zone_->New<Scope>(zone_, Scope::Kind::kCatch, current_scope);
+        catch_block.scope = catch_scope;
         if (catch_block.var_name != nullptr &&
             catch_block.var_name->kind() == ASTNode::Kind::kIdentExpr) {
           const auto ident = Cast<ASTIdentExpr>(catch_block.var_name);
@@ -316,8 +330,7 @@ void ScopeAnalyzer::AnalyzeExpr(ZonePtr<ASTExpr> expr, Scope* current_scope) {
     }
     case ASTNode::Kind::kIdentExpr: {
       const auto ident_expr = Cast<ASTIdentExpr>(expr);
-      ident_expr->binding =
-          ResolveIdentifier(ident_expr->ident, current_scope);
+      ident_expr->binding = ResolveIdentifier(ident_expr->ident, current_scope);
       return;
     }
     case ASTNode::Kind::kCallExpr: {
@@ -369,6 +382,11 @@ void ScopeAnalyzer::AnalyzeExpr(ZonePtr<ASTExpr> expr, Scope* current_scope) {
       AnalyzeExpr(member_access_expr->expr, current_scope);
       return;
     }
+    case ASTNode::Kind::kClosureExpr: {
+      const auto closure_expr = Cast<ASTClosureExpr>(expr);
+      AnalyzeClosure(closure_expr, current_scope);
+      return;
+    }
     default:
       ABSL_UNREACHABLE();
   }
@@ -378,13 +396,22 @@ Variable* ScopeAnalyzer::ResolveIdentifier(const std::string_view name,
                                            Scope* current_scope) {
   // First, look through the current function's scope chain (block/catch
   // scopes up to and including the enclosing function scope).
+  bool crossed_function = false;
   for (Scope* scope = current_scope; scope != nullptr;
        scope = scope->parent()) {
     if (auto* variable = scope->LookupLocal(name)) {
+      if (crossed_function && (variable->kind == BindingKind::kParameter ||
+                               variable->kind == BindingKind::kLocal)) {
+        if (!variable->captured) {
+          variable->captured = true;
+          variable->context_slot = scope->AllocateContextSlot();
+          scope->set_need_context(true);
+        }
+      }
       return variable;
     }
     if (scope->kind() == Scope::Kind::kFunction) {
-      break;
+      crossed_function = true;
     }
   }
 
@@ -396,6 +423,7 @@ Variable* ScopeAnalyzer::ResolveIdentifier(const std::string_view name,
        module_scope != nullptr; module_scope = module_scope->parent()) {
     if (module_scope->HasMember(name)) {
       auto* variable = zone_->New<Variable>();
+      variable->owning_scope = current_scope;
       variable->name = name;
       variable->kind = BindingKind::kModuleGlobal;
       return variable;
@@ -403,6 +431,7 @@ Variable* ScopeAnalyzer::ResolveIdentifier(const std::string_view name,
     if (!module_scope->module_name().empty() &&
         module_scope->module_name() == name) {
       auto* variable = zone_->New<Variable>();
+      variable->owning_scope = current_scope;
       variable->name = name;
       variable->kind = BindingKind::kModuleGlobal;
       return variable;
@@ -413,6 +442,7 @@ Variable* ScopeAnalyzer::ResolveIdentifier(const std::string_view name,
   auto* variable = zone_->New<Variable>();
   variable->name = name;
   variable->kind = BindingKind::kGlobal;
+  variable->owning_scope = current_scope;
   return variable;
 }
 

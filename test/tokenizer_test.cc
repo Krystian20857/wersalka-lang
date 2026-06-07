@@ -27,7 +27,8 @@ std::vector<TokenKind> kindsOf(const std::initializer_list<TokenKind>& tokens) {
 
 struct TokenizerTestFixture : ::testing::Test {
   std::vector<Token> Tokenize(const std::string& source) {
-    Tokenizer tokenizer(&zone, &reporter, source);
+    SourceFile source_file{""};
+    Tokenizer tokenizer(&zone, &reporter, &source_file);
     std::vector<Token> tokens;
     while (true) {
       tokenizer.Next();

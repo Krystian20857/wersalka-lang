@@ -15,6 +15,7 @@
 namespace wersalka {
 namespace lang {
 namespace runtime {
+struct ASTClosureExpr;
 
 struct ASTCompileUnit;
 struct ASTModuleDecl;
@@ -23,18 +24,22 @@ struct ASTGlobalDecl;
 struct ASTStmt;
 struct ASTExpr;
 
+class Scope;
+
 enum class BindingKind {
   kParameter,        // function-frame slot, declared as function parameter
   kLocal,            // function-frame slot, declared via `var`
   kModuleGlobal,     // declared in some enclosing module or compile unit
   kGlobal,           // unresolved at compile time, falls through to runtime
-  kContextCaptured,  // reserved for closures; not produced by this pass
 };
 
 struct Variable : ZoneObject {
   std::string_view name;
   BindingKind kind;
-  int slot = -1;  // valid for kParameter, kLocal
+  int slot = -1;          // frame slot, valid for kParameter, kLocal
+  int context_slot = -1;  // context slot, valid when captured
+  bool captured = false;
+  Scope* owning_scope = nullptr;
   TextSpan declaration_span;
 };
 
@@ -78,17 +83,24 @@ class Scope : public ZoneObject {
   int AllocateSlot();
   void ReleaseSlot(int slot);
 
+  int AllocateContextSlot();
+  int num_context_slots() const { return num_context_slots_; }
+
   // Returns all slots used by this scope's locals back to the enclosing
   // function scope (LIFO order). Used by the analyzer when leaving a block.
   void ReleaseOwnedSlots();
 
   Kind kind() const { return kind_; }
   Scope* parent() const { return parent_; }
+  const ZoneList<Variable*>& variables() const { return variables_; }
 
   // Walks up the parent chain until the nearest enclosing scope of the
   // requested kind. Returns nullptr if none found.
   Scope* EnclosingFunction();
   Scope* EnclosingModule();
+
+  void set_need_context(const bool need_context) { need_context_ = need_context; }
+  bool need_context() const { return need_context_; }
 
  private:
   Zone* zone_;
@@ -101,6 +113,8 @@ class Scope : public ZoneObject {
   int next_slot_ = 0;
   int max_user_slots_ = 0;
   ZoneList<int> free_slots_;
+  int num_context_slots_ = 0;
+  bool need_context_;
 };
 
 // Drives the scope-analysis pass. Constructed per compile unit; mutates AST
@@ -120,6 +134,8 @@ class ScopeAnalyzer {
 
  private:
   void AnalyzeFunction(ZonePtr<ASTFunctionDecl> function_decl,
+                       Scope* module_scope);
+  void AnalyzeClosure(ZonePtr<ASTClosureExpr> outer_scope,
                        Scope* module_scope);
   void AnalyzeGlobalInit(ZonePtr<ASTGlobalDecl> global_decl,
                          Scope* module_scope);

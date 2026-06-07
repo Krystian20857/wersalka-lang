@@ -322,6 +322,15 @@ static void DumpNode(const ASTNode* node, std::string& out, int depth) {
       DumpNode(n->expr, out, depth + 1);
       break;
     }
+    case ASTNode::Kind::kClosureExpr: {
+      const auto* n = static_cast<const ASTClosureExpr*>(node);
+      absl::StrAppendFormat(&out, "%sClosureExpr\n", indent);
+      for (int i = 0; i < n->params.size(); i++) {
+        absl::StrAppendFormat(&out, "%s  Param [%s]\n", indent, n->params[i]);
+      }
+      DumpNode(n->block, out, depth + 1);
+      break;
+    }
   }
 }
 

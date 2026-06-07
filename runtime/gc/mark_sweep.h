@@ -80,6 +80,7 @@ class MarkSweepGC : public GC {
 
   void* Alloc(std::size_t size, std::size_t align) override;
   void Collect(VMThread* thread) override;
+  void MarkPermanent(GCPtr<Object> object) override;
   GCStats GetStats() const override;
 
  private:
@@ -89,6 +90,7 @@ class MarkSweepGC : public GC {
   struct ObjectHeader {
     bool marked;
     bool is_large_object;
+    bool permanent;
   };
 
   struct LargeObjectHeader {

@@ -5,3 +5,9 @@ wersalka_binary(
     srcs = "hello.w",
     deps = ["//stdlib"],
 )
+
+wersalka_binary(
+    name = "closure",
+    srcs = "closure.w",
+    #    deps = ["//stdlib"],
+)

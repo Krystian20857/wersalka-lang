@@ -25,7 +25,11 @@ enum class VMThreadState { kRunning, kNative, kError, kReturned };
 //  [callee] [arg0]...[argX] [local0]...[localX] [operand0]...[operandX]
 struct VMFrame {
   VMFrame(CodeObject* code_obj, Tagged<FunctionObject> func_obj, Value* locals)
-      : code_obj(code_obj), func_obj(func_obj), pc(0), locals(locals) {}
+      : code_obj(code_obj),
+        func_obj(func_obj),
+        pc(0),
+        locals(locals),
+        current_context(Value::CreateNull()) {}
 
   // keep VMThread::frames_ happy
   VMFrame() : VMFrame(nullptr, Value::CreateNull(), nullptr) {}
@@ -34,6 +38,7 @@ struct VMFrame {
   Tagged<FunctionObject> func_obj;
   uint32_t pc;
   Value* locals;
+  Tagged<ClosureContextObject> current_context;
 };
 
 class VMThread {

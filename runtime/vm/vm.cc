@@ -392,6 +392,12 @@ Value VMInterpreter::Run(VMThread* thread) {
             thread->PushStack(result);
             frame->pc++;
           }
+        } else if (obj->kind() == ObjectKind::kClosure) {
+          auto* fn = static_cast<ClosureObject*>(obj);
+          const auto outer_context = fn->outer_context();
+          if (CallFunction(thread, fn->function().Get(), arg_count)) {
+            thread->CurrentFrame()->current_context = outer_context;
+          }
         } else {
           ThrowRuntimeError(thread,
                             "Invalid callee type, function object required");
@@ -409,6 +415,15 @@ Value VMInterpreter::Run(VMThread* thread) {
         thread->SetStackTop(prev_locals - 1);  // discard callee + args
         thread->PushStack(value);
         thread->CurrentFrame()->pc++;  // advance past kInvoke in caller
+        break;
+      }
+      case Opcode::kClosure: {
+        const auto function_object = code_object->constants[instr.c2];
+        CHECK_EQ(function_object.kind, ConstantDesc::Kind::kFunction);
+        const auto closure_object = ClosureObject::New(
+            runtime_->gc(), function_object.function_v, frame->current_context);
+        thread->PushStack(closure_object);
+        thread->CurrentFrame()->pc++;
         break;
       }
       case Opcode::kNewArray: {
@@ -523,6 +538,60 @@ Value VMInterpreter::Run(VMThread* thread) {
       }
       case Opcode::kClearException: {
         thread->pending_exception_ = Value::CreateNull();
+        frame->pc++;
+        break;
+      }
+      case Opcode::kMakeContext: {
+        const auto closure_context = ClosureContextObject::New(
+            runtime_->gc(), frame->current_context, instr.c2);
+        thread->PushStack(Value::CreateObject(closure_context));
+        frame->pc++;
+        break;
+      }
+      case Opcode::kPushContext: {
+        const auto closure_context_value = thread->PopStack();
+        if (!closure_context_value.IsObject(ObjectKind::kClosureContext)) {
+          ThrowRuntimeError(
+              thread,
+              absl::StrFormat(
+                  "Closure context object required, got `%s`",
+                  VMIntrinsics::GetValueTypeName(closure_context_value)));
+          break;
+        }
+        frame->locals[instr.c2] = frame->current_context.AsValue();
+        frame->current_context = closure_context_value;
+        frame->pc++;
+        break;
+      }
+      case Opcode::kPopContext: {
+        frame->current_context = frame->locals[instr.c2];
+        frame->pc++;
+        break;
+      }
+      case Opcode::kLoadContextSlot: {
+        const auto depth = (instr.c2 >> 16) & 0xFFFF;
+        const auto slot = instr.c2 & 0xFFFF;
+        auto current_context = frame->current_context;
+        // TODO: depth underflow check
+        for (auto n = 0; n < depth; ++n) {
+          current_context = current_context->parent();
+        }
+        // TODO: slot bound checks
+        const auto value = current_context->GetValues()[slot];
+        thread->PushStack(value);
+        frame->pc++;
+        break;
+      }
+      case Opcode::kStoreContextSlot: {
+        const auto depth = (instr.c2 >> 16) & 0xFFFF;
+        const auto slot = instr.c2 & 0xFFFF;
+        auto current_context = frame->current_context;
+        // TODO: depth underflow check
+        for (auto n = 0; n < depth; ++n) {
+          current_context = current_context->parent();
+        }
+        // TODO: slot bound checks
+        current_context->GetValues()[slot] = thread->PopStack();
         frame->pc++;
         break;
       }

@@ -62,7 +62,7 @@ uint64_t AllocSlab::Sweep() {
           reinterpret_cast<char*>(current_page) + sizeof(Page) + offset);
       const auto obj_header_ptr = reinterpret_cast<MarkSweepGC::ObjectHeader*>(
           reinterpret_cast<char*>(slab_header_ptr) + sizeof(SlabObjectHeader));
-      if (!obj_header_ptr->marked) {
+      if (!obj_header_ptr->marked && !obj_header_ptr->permanent) {
         // FreeBlock lives at the object data start (right after ObjectHeader),
         // so FreeBlock::next never overlaps ObjectHeader::marked.
         const auto free_block = reinterpret_cast<FreeBlock*>(
@@ -134,6 +134,9 @@ void MarkSweepGC::Collect(VMThread* thread) {
     collect_requested_ = false;
   }
 }
+void MarkSweepGC::MarkPermanent(const GCPtr<Object> object) {
+  HeaderOf(object)->permanent = true;
+}
 GCStats MarkSweepGC::GetStats() const {
   return GCStats {
     .allocated_bytes = this->allocated_bytes_,
@@ -160,7 +163,7 @@ void MarkSweepGC::CollectNow(VMThread* thread) {
   while (current_object != nullptr) {
     const auto header = PtrOfHeaderFromLarge(current_object);
     const auto next = current_object->next;
-    if (!header->marked) {
+    if (!header->marked && !header->permanent) {
       if (prev != nullptr) {
         prev->next = next;
       } else {
@@ -223,6 +226,9 @@ MarkSweepGC::ObjectHeader* MarkSweepGC::PtrOfHeaderFromLarge(
 }
 bool MarkSweepGCVisitor::Visit(const Handle<Object> value) {
   const auto header = MarkSweepGC::HeaderOf(value.GetPtr());
+  if (header->permanent) {
+    return true;
+  }
   if (header->marked) {
     return true;
   }

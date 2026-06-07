@@ -22,55 +22,62 @@ constexpr auto kExtraStackSize = 4;
 // clang-format off
 constexpr auto kOpcodes =
     std::array<OpcodeInfo, static_cast<size_t>(Opcode::kReserved)>{
-        DEFINE_OPCODE("NOP",              0, 0),
+        DEFINE_OPCODE("NOP",                  0, 0),
 
-        DEFINE_OPCODE("PUSH_CONST",       0, 1),
+        DEFINE_OPCODE("PUSH_CONST",           0, 1),
 
-        DEFINE_OPCODE("LOAD_LOCAL",       0, 1),
-        DEFINE_OPCODE("STORE_LOCAL",      1, 0),
-        DEFINE_OPCODE("LOAD_GLOBAL",      1, 1),
-        DEFINE_OPCODE("STORE_GLOBAL",     2, 0),
+        DEFINE_OPCODE("LOAD_LOCAL",           0, 1),
+        DEFINE_OPCODE("STORE_LOCAL",          1, 0),
+        DEFINE_OPCODE("LOAD_GLOBAL",          1, 1),
+        DEFINE_OPCODE("STORE_GLOBAL",         2, 0),
 
-        DEFINE_OPCODE("JMP",              0, 0),
-        DEFINE_OPCODE("JMP_IF_TRUE",      1, 0),
-        DEFINE_OPCODE("JMP_IF_FALSE",     1, 0),
+        DEFINE_OPCODE("JMP",                  0, 0),
+        DEFINE_OPCODE("JMP_IF_TRUE",          1, 0),
+        DEFINE_OPCODE("JMP_IF_FALSE",         1, 0),
 
-        DEFINE_OPCODE("POP",              1, 0),
-        DEFINE_OPCODE("DUP",              1, 2),
-        DEFINE_OPCODE("SWAP",             1, 1),
+        DEFINE_OPCODE("POP",                  1, 0),
+        DEFINE_OPCODE("DUP",                  1, 2),
+        DEFINE_OPCODE("SWAP",                 1, 1),
 
-        DEFINE_OPCODE("ADD",              2, 1),
-        DEFINE_OPCODE("SUB",              2, 1),
-        DEFINE_OPCODE("MUL",              2, 1),
-        DEFINE_OPCODE("DIV",              2, 1),
-        DEFINE_OPCODE("MOD",              2, 1),
-        DEFINE_OPCODE("AND",              2, 1),
-        DEFINE_OPCODE("OR",               2, 1),
-        DEFINE_OPCODE("XOR",              2, 1),
-        DEFINE_OPCODE("SHL",              2, 1),
-        DEFINE_OPCODE("SHR",              2, 1),
-        DEFINE_OPCODE("CMP_GT",           2, 1),
-        DEFINE_OPCODE("CMP_LT",           2, 1),
-        DEFINE_OPCODE("CMP_GE",           2, 1),
-        DEFINE_OPCODE("CMP_LE",           2, 1),
-        DEFINE_OPCODE("CMP_EQ",           2, 1),
-        DEFINE_OPCODE("NEG",              1, 1),
+        DEFINE_OPCODE("ADD",                  2, 1),
+        DEFINE_OPCODE("SUB",                  2, 1),
+        DEFINE_OPCODE("MUL",                  2, 1),
+        DEFINE_OPCODE("DIV",                  2, 1),
+        DEFINE_OPCODE("MOD",                  2, 1),
+        DEFINE_OPCODE("AND",                  2, 1),
+        DEFINE_OPCODE("OR",                   2, 1),
+        DEFINE_OPCODE("XOR",                  2, 1),
+        DEFINE_OPCODE("SHL",                  2, 1),
+        DEFINE_OPCODE("SHR",                  2, 1),
+        DEFINE_OPCODE("CMP_GT",               2, 1),
+        DEFINE_OPCODE("CMP_LT",               2, 1),
+        DEFINE_OPCODE("CMP_GE",               2, 1),
+        DEFINE_OPCODE("CMP_LE",               2, 1),
+        DEFINE_OPCODE("CMP_EQ",               2, 1),
+        DEFINE_OPCODE("NEG",                  1, 1),
 
-        DEFINE_OPCODE("INVOKE",           1, 1),
-        DEFINE_OPCODE("RETURN",           1, 0),
+        DEFINE_OPCODE("INVOKE",               1, 1),
+        DEFINE_OPCODE("RETURN",               1, 0),
+        DEFINE_OPCODE("CLOSURE",              0, 1),
 
-        DEFINE_OPCODE("NEW_ARRAY",        1, 1),
-        DEFINE_OPCODE("STORE_ARRAY",      3, 0),
-        DEFINE_OPCODE("LOAD_ARRAY",       2, 1),
+        DEFINE_OPCODE("NEW_ARRAY",            1, 1),
+        DEFINE_OPCODE("STORE_ARRAY",          3, 0),
+        DEFINE_OPCODE("LOAD_ARRAY",           2, 1),
 
-        DEFINE_OPCODE("NEW_OBJECT",       0, 1),
-        DEFINE_OPCODE("SET_FIELD",        3, 0),
-        DEFINE_OPCODE("GET_FIELD",        2, 1),
+        DEFINE_OPCODE("NEW_OBJECT",           0, 1),
+        DEFINE_OPCODE("SET_FIELD",            3, 0),
+        DEFINE_OPCODE("GET_FIELD",            2, 1),
 
-        DEFINE_OPCODE("THROW",            1, 0),
-        DEFINE_OPCODE("RETHROW",          0, 0),
-        DEFINE_OPCODE("PUSH_EXCEPTION",   0, 1),
-        DEFINE_OPCODE("CLEAR_EXCEPTION",  0, 0),
+        DEFINE_OPCODE("THROW",                1, 0),
+        DEFINE_OPCODE("RETHROW",              0, 0),
+        DEFINE_OPCODE("PUSH_EXCEPTION",       0, 1),
+        DEFINE_OPCODE("CLEAR_EXCEPTION",      0, 0),
+
+        DEFINE_OPCODE("MAKE_CONTEXT",         0, 1),
+        DEFINE_OPCODE("PUSH_CONTEXT",         1, 0),
+        DEFINE_OPCODE("POP_CONTEXT",          0, 0),
+        DEFINE_OPCODE("STORE_CONTEXT_SLOT",   1, 0),
+        DEFINE_OPCODE("LOAD_CONTEXT_SLOT",    0, 1),
     };
 // clang-format on
 
@@ -90,6 +97,9 @@ ConstantDesc ConstantDesc::CreateBool(bool value) {
 ConstantDesc ConstantDesc::CreateString(const std::string_view str) {
   // ReSharper disable once CppDFALocalValueEscapesFunction
   return {.kind = Kind::kString, .str_v = str};
+}
+ConstantDesc ConstantDesc::CreateFunction(const Tagged<FunctionObject> func) {
+  return {.kind = Kind::kFunction, .function_v = func};
 }
 Label BytecodeBuilder::NewLabel() {
   const auto id = labels_.size();
@@ -124,6 +134,12 @@ int BytecodeBuilder::Emit(const Opcode opcode, const uint16_t c1,
 int BytecodeBuilder::EmitVarLocal(Opcode opcode, uint16_t slot) {
   CHECK(opcode == Opcode::kLoadLocal || opcode == Opcode::kStoreLocal);
   return Emit(opcode, slot, 0);
+}
+int BytecodeBuilder::EmitVarContext(Opcode opcode, uint16_t depth,
+                                    uint16_t slot) {
+  CHECK(opcode == Opcode::kLoadContextSlot ||
+        opcode == Opcode::kStoreContextSlot);
+  return Emit(opcode, 0, depth << 16 | slot);
 }
 int BytecodeBuilder::EmitInvoke(Opcode opcode, uint16_t arg_count) {
   CHECK(opcode == Opcode::kInvoke);
@@ -182,6 +198,22 @@ void BytecodeDisassembler::Disassemble(std::ostream& stream) const {
       }
       case Opcode::kInvoke: {
         stream << " " << absl::StrFormat("args: `%d`", instr.c1);
+        break;
+      }
+      case Opcode::kMakeContext: {
+        stream << " " << absl::StrFormat("slots: `%d`", instr.c2);
+        break;
+      }
+      case Opcode::kPopContext:
+      case Opcode::kPushContext: {
+        stream << " " << absl::StrFormat("save_slot: `%d`", instr.c2);
+        break;
+      }
+      case Opcode::kLoadContextSlot:
+      case Opcode::kStoreContextSlot: {
+        stream << " "
+               << absl::StrFormat("depth: `%d`, slot: `%d`", instr.c2 >> 16,
+                                  instr.c2 & 0xFFFF);
         break;
       }
       default: {

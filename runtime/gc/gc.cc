@@ -4,8 +4,6 @@
 
 #include "gc.h"
 
-#include <cstdlib>
-
 #include "runtime/vm/object_impl.h"
 #include "runtime/vm/vm.h"
 
@@ -65,6 +63,25 @@ void GCVisitor::WalkObject(Value* value) {
       }
       break;
     }
+    case ObjectKind::kModuleMeta: {
+      const auto module_meta = static_cast<ModuleMetaObject*>(handle.GetPtr());
+      WalkObject(&module_meta->name_.AsValue());
+      break;
+    }
+    case ObjectKind::kClosure: {
+      const auto closure = static_cast<ClosureObject*>(handle.GetPtr());
+      WalkObject(&closure->function_.AsValue());
+      WalkObject(&closure->outer_context_.AsValue());
+      break;
+    }
+    case ObjectKind::kClosureContext: {
+      const auto closure_context =
+          static_cast<ClosureContextObject*>(handle.GetPtr());
+      WalkObject(&closure_context->parent_.AsValue());
+      for (auto& slot : closure_context->GetValues()) {
+        WalkObject(&slot);
+      }
+    }
   }
 }
 void GCVisitor::WalkRoots(VMThread* thread) {
@@ -85,6 +102,7 @@ void GCVisitor::WalkRoots(VMThread* thread) {
     for (auto v = start; v < end; ++v) {
       WalkObject(v);
     }
+    WalkObject(&frame.current_context.AsValue());
   }
 
   for (auto* v = thread->handle_stack_.data(); v < thread->handle_top_; ++v) {

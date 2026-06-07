@@ -474,7 +474,7 @@ CompileUnit
 )"
     },
     ParserCase{
-      "func foo(x y) {}",
+      "func foo(x, y) {}",
       R"(
 CompileUnit
   FunctionDecl [foo]
@@ -501,6 +501,17 @@ CompileUnit
     ConstExpr [1]
   FunctionDecl [foo]
     BlockStmt
+)"
+    },
+    ParserCase{
+      "var f = func(a, b) {};",
+      R"(
+CompileUnit
+  GlobalDecl [f]
+    ClosureExpr
+      Param [a]
+      Param [b]
+      BlockStmt
 )"
     }
   )

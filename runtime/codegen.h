@@ -24,14 +24,21 @@ using CodeGenFn = std::function<void()>;
 
 class CodeGenerator {
  public:
-  explicit CodeGenerator(Runtime* runtime, DiagnosticReporter* reporter,
-                         Zone* zone, const SourceFile* source_file)
+  explicit CodeGenerator(
+      Runtime* runtime, DiagnosticReporter* reporter, Zone* zone,
+      const SourceFile* source_file,
+      const Tagged<ShapedObject> current_module =
+          Tagged<ShapedObject>(Value::CreateNull()),
+      const std::span<const ModuleAlias> ancestor_aliases = {})
       : runtime_(runtime),
         reporter_(reporter),
         zone_(zone),
         source_file_(source_file),
         builder_(zone),
-        try_catch_blocks_(zone, 16) {}
+        try_catch_blocks_(zone, 16),
+        current_module_(current_module),
+        ancestor_aliases_(ancestor_aliases),
+        current_scope_(nullptr) {}
 
   GCPtr<FunctionObject> CompileFunctionObject(
       ZonePtr<ASTFunctionDecl> function_decl);
@@ -46,6 +53,19 @@ class CodeGenerator {
                                         int user_max_locals, CodeGenFn op);
 
  private:
+  class ScopeGuard {
+   public:
+    ScopeGuard(CodeGenerator* generator, Scope* new_scope)
+        : generator_(generator), old_scope_(generator->current_scope_) {
+      generator->current_scope_ = new_scope;
+    }
+    ~ScopeGuard() { generator_->current_scope_ = old_scope_; }
+
+   private:
+    CodeGenerator* generator_;
+    Scope* old_scope_;
+  };
+
   void CompileStmt(ZonePtr<ASTStmt> stmt);
   void CompileExpr(ZonePtr<ASTExpr> expr);
   void CompileBinaryExpr(ZonePtr<ASTBinaryExpr> expr);
@@ -54,6 +74,7 @@ class CodeGenerator {
   void CompileTemplateExpr(ZonePtr<ASTTemplateExpr> expr);
   void CompileLValue(ZonePtr<ASTExpr> target);
   void CompileRValue(ZonePtr<ASTExpr> value);
+  void CompileClosureExpr(ZonePtr<ASTClosureExpr> expr);
 
   void CompileIdent(ZonePtr<ASTIdentExpr> ident, bool is_write);
   void CompileTryStmt(ZonePtr<ASTTryStmt> stmt);
@@ -64,6 +85,9 @@ class CodeGenerator {
                                             const BytecodeBuilder& builder);
   void MarkCurrentLine(ZonePtr<ASTNode> node);
   int AllocateSyntheticSlot();
+  int ComputeContextDepth(Scope* declaring);
+  int EmitContextEntry(Scope* scope);
+  void EmitContextExit(int save_slot);
 
   Runtime* runtime_;
   DiagnosticReporter* reporter_;
@@ -72,6 +96,9 @@ class CodeGenerator {
   BytecodeBuilder builder_;
   ZoneList<TryCatchBlock> try_catch_blocks_;
   std::vector<std::function<void()>> finally_blocks_;
+  Tagged<ShapedObject> current_module_;
+  std::span<const ModuleAlias> ancestor_aliases_;
+  Scope* current_scope_;
 
   int next_synthetic_slot_ = 0;
   int max_locals_total_ = 0;

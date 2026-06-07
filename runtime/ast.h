@@ -59,7 +59,8 @@ class ASTNode : public ZoneObject {
     kAssignExpr,
     kNewArrayExpr,
     kNewObjectExpr,
-    kMemberAccessExpr
+    kMemberAccessExpr,
+    kClosureExpr,
   };
 
   static constexpr auto kKind = Kind::kUnknown;
@@ -240,6 +241,7 @@ struct ASTTryStmt : ASTStmt {
   struct CatchBlock {
     ZonePtr<ASTStmt> block;
     ZonePtr<ASTExpr> var_name;
+    Scope* scope = nullptr;
   };
 
   explicit ASTTryStmt(const TextSpan& span, const ZonePtr<ASTStmt> try_block,
@@ -453,6 +455,18 @@ struct ASTMemberAccessExpr : ASTExpr {
 
   ZonePtr<ASTExpr> expr;
   ZoneStr field;
+};
+
+struct ASTClosureExpr : ASTExpr {
+  static constexpr auto kKind = Kind::kClosureExpr;
+
+  explicit ASTClosureExpr(const TextSpan& span, const ZoneList<ZoneStr> params,
+                          const ZonePtr<ASTStmt> block)
+      : ASTExpr(Kind::kClosureExpr, span), params(params), block(block) {}
+
+  ZoneList<ZoneStr> params;
+  ZonePtr<ASTStmt> block;
+  Scope* function_scope = nullptr;
 };
 
 std::string_view GetBinaryOpMnemonic(ASTBinaryExpr::Operator op);

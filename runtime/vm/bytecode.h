@@ -5,12 +5,14 @@
 #ifndef WERSALKALANG_BYTECODE_H
 #define WERSALKALANG_BYTECODE_H
 
+#include "runtime/vm/value.h"
 #include "runtime/zone.h"
 
 namespace wersalka {
 namespace lang {
 namespace runtime {
 
+class FunctionObject;
 class BytecodeBuilder;
 struct CodeObject;
 
@@ -33,12 +35,15 @@ enum class Opcode : uint8_t {
   kCmpGt, kCmpLt, kCmpGe, kCmpLe, kCmpEq,
   kNeg,
 
-  kInvoke, kReturn,
+  kInvoke, kReturn, kClosure,
 
   kNewArray, kStoreArray, kLoadArray,
   kNewObject, kSetField, kGetField,
 
   kThrow, kRethrow, kPushException, kClearException,
+
+  kMakeContext, kPushContext, kPopContext,
+  kStoreContextSlot, kLoadContextSlot,
 
   kReserved
 };
@@ -74,8 +79,9 @@ struct ConstantDesc {
   static ConstantDesc CreateNull();
   static ConstantDesc CreateBool(bool value);
   static ConstantDesc CreateString(std::string_view str);
+  static ConstantDesc CreateFunction(Tagged<FunctionObject> func);
 
-  enum class Kind { kInt, kUInt, kFloat, kBool, kNull, kString };
+  enum class Kind { kInt, kUInt, kFloat, kBool, kNull, kString, kFunction };
   Kind kind;
   union {
     int64_t int_v;
@@ -83,6 +89,7 @@ struct ConstantDesc {
     double float_v;
     bool bool_v;
     std::string_view str_v;
+    Tagged<FunctionObject> function_v;
   };
 };
 
@@ -114,10 +121,13 @@ class BytecodeBuilder {
   int EmitPushConst(ConstantDesc constant);
   int Emit(Opcode opcode, uint16_t c1, uint32_t c2);
   int EmitVarLocal(Opcode opcode, uint16_t slot);
+  int EmitVarContext(Opcode opcode, uint16_t depth, uint16_t slot);
   int EmitInvoke(Opcode opcode, uint16_t arg_count);
   int Emit(Opcode opcode);
   void EmitJump(Opcode opcode, Label label);
   void EmitJump(Opcode opcode, uint16_t c1, Label label);
+
+  int AddConstant(ConstantDesc desc);
 
   // more like next bci, idc
   int current_bci() const { return instructions_.size(); }
@@ -138,8 +148,6 @@ class BytecodeBuilder {
   };
 
   static constexpr auto kUnpatchedJump = 0xFFFF;
-
-  int AddConstant(ConstantDesc desc);
 
   Zone* zone_;
   ZoneList<Instr> instructions_;

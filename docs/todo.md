@@ -1,7 +1,11 @@
 * stdlib
 * (more) arrays, lists, overall collections
 * tuples
-* closure
+* closures
+* break, continue
+* for stmt
+* DiagnosticReporter -> exception adapter
+* eval(...), load_module_sources(...), etc
 * cinterop (e.g., for raylib)
 * inline caches
 * JIT compiler

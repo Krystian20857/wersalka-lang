@@ -68,6 +68,7 @@ class ZoneList {
                 "Elements of `ZoneList` have to be trivially destructible");
 
   using const_iterator = const T*;
+  using iterator = T*;
 
   explicit ZoneList(Zone* zone) : ZoneList(zone, kDefaultCapacity) {}
   ZoneList(Zone* zone, int capacity);
@@ -75,6 +76,10 @@ class ZoneList {
   T& operator[](int idx) const { return elements_[idx]; }
   const_iterator begin() const { return &elements_[0]; }
   const_iterator end() const { return &elements_[size_]; }
+  iterator begin() { return &elements_[0]; }
+  iterator end() { return &elements_[size_]; }
+  const_iterator cbegin() const { return &elements_[0]; }
+  const_iterator cend() const { return &elements_[size_]; }
   int size() const { return size_; }
   int empty() const { return size_ == 0; }
 
@@ -171,8 +176,7 @@ void ZoneList<T>::Add(Zone* zone, Elem&& element) {
 template <typename T>
 void ZoneList<T>::AddAll(Zone* zone, const ZoneList* other) {
   Reserve(zone, size_ + other->size());
-  std::memcpy(elements_ + size_,
-              other->elements_, other->size() * sizeof(T));
+  std::memcpy(elements_ + size_, other->elements_, other->size() * sizeof(T));
   size_ += other->size();
 }
 template <typename T>
