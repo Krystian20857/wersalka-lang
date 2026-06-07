@@ -22,6 +22,7 @@ struct ASTBlockStmt;
 struct ASTFunctionDecl;
 struct ASTModuleDecl;
 struct ASTIdentExpr;
+struct ASTPattern;
 
 struct Variable;
 class Scope;
@@ -61,6 +62,11 @@ class ASTNode : public ZoneObject {
     kNewObjectExpr,
     kMemberAccessExpr,
     kClosureExpr,
+    kTupleExpr,
+
+    // pattern
+    kBindingPattern,
+    kTuplePattern
   };
 
   static constexpr auto kKind = Kind::kUnknown;
@@ -181,12 +187,11 @@ struct ASTBlockStmt : ASTStmt {
 struct ASTVarStmt : ASTStmt {
   static constexpr auto kKind = Kind::kVarStmt;
 
-  explicit ASTVarStmt(const TextSpan& span, const ZoneStr name,
+  explicit ASTVarStmt(const TextSpan& span, const ZonePtr<ASTPattern> pattern,
                       const std::optional<ZonePtr<ASTExpr>> init_expr)
-      : ASTStmt(Kind::kVarStmt, span), name(name), init_expr(init_expr) {}
-  ZoneStr name;
+      : ASTStmt(Kind::kVarStmt, span), pattern(pattern), init_expr(init_expr) {}
+  ZonePtr<ASTPattern> pattern;
   std::optional<ZonePtr<ASTExpr>> init_expr;
-  Variable* binding = nullptr;
 };
 
 struct ASTExprStmt : ASTStmt {
@@ -431,9 +436,9 @@ struct ASTNewArrayExpr : ASTExpr {
 
   explicit ASTNewArrayExpr(const TextSpan& span,
                            const ZonePtrList<ASTExpr> elements)
-      : ASTExpr(Kind::kNewArrayExpr, span), elements_(elements) {}
+      : ASTExpr(Kind::kNewArrayExpr, span), elements(elements) {}
 
-  ZonePtrList<ASTExpr> elements_;
+  ZonePtrList<ASTExpr> elements;
 };
 
 // TODO: right now I don't have idea how to
@@ -467,6 +472,42 @@ struct ASTClosureExpr : ASTExpr {
   ZoneList<ZoneStr> params;
   ZonePtr<ASTStmt> block;
   Scope* function_scope = nullptr;
+};
+
+struct ASTTupleExpr : ASTExpr {
+  static constexpr auto kKind = Kind::kTupleExpr;
+
+  explicit ASTTupleExpr(const TextSpan& span,
+                        const ZonePtrList<ASTExpr>& elements)
+      : ASTExpr(Kind::kTupleExpr, span), elements(elements) {}
+
+  ZonePtrList<ASTExpr> elements;
+};
+
+// patterns
+
+struct ASTPattern : ASTNode {
+  explicit ASTPattern(const Kind kind, const TextSpan& span)
+      : ASTNode(kind, span) {}
+};
+
+struct ASTBindingPattern : ASTPattern {
+  static constexpr auto kKind = Kind::kBindingPattern;
+
+  explicit ASTBindingPattern(const TextSpan& span, const ZoneStr& name)
+      : ASTPattern(Kind::kBindingPattern, span), name(name) {}
+
+  ZoneStr name;
+  Variable* binding = nullptr;
+};
+
+struct ASTTuplePattern : ASTPattern {
+  static constexpr auto kKind = Kind::kTuplePattern;
+
+  ASTTuplePattern(const TextSpan& span, const ZonePtrList<ASTPattern>& patterns)
+      : ASTPattern(Kind::kTuplePattern, span), patterns(patterns) {}
+
+  ZonePtrList<ASTPattern> patterns;
 };
 
 std::string_view GetBinaryOpMnemonic(ASTBinaryExpr::Operator op);

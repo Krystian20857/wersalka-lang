@@ -23,6 +23,7 @@ struct ASTFunctionDecl;
 struct ASTGlobalDecl;
 struct ASTStmt;
 struct ASTExpr;
+struct ASTPattern;
 
 class Scope;
 
@@ -141,6 +142,7 @@ class ScopeAnalyzer {
                          Scope* module_scope);
   void AnalyzeStmt(ZonePtr<ASTStmt> stmt, Scope* current_scope);
   void AnalyzeExpr(ZonePtr<ASTExpr> expr, Scope* current_scope);
+  void AnalyzePattern(ZonePtr<ASTPattern> pattern, Scope* current_scope);
 
   void RegisterMembers(Scope* module_scope,
                        const ZonePtrList<ASTGlobalDecl>& globals,

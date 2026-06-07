@@ -40,3 +40,9 @@ wersalka_test(
     srcs = "closures_test.w",
     deps = ["//stdlib"],
 )
+
+wersalka_test(
+    name = "tuples",
+    srcs = "tuples_test.w",
+    deps = ["//stdlib"],
+)

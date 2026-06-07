@@ -4,6 +4,7 @@
 * closures
 * break, continue
 * for stmt
+* proper `new { ... }` expression
 * DiagnosticReporter -> exception adapter
 * eval(...), load_module_sources(...), etc
 * cinterop (e.g., for raylib)

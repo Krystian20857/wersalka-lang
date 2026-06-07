@@ -25,7 +25,8 @@ enum class ObjectKind {
   kArray,
   kModuleMeta,
   kClosure,
-  kClosureContext
+  kClosureContext,
+  kTuple
 };
 
 class Object {

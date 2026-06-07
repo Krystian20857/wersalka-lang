@@ -78,6 +78,7 @@ class CodeGenerator {
 
   void CompileIdent(ZonePtr<ASTIdentExpr> ident, bool is_write);
   void CompileTryStmt(ZonePtr<ASTTryStmt> stmt);
+  void CompilePattern(ZonePtr<ASTPattern> pattern, int right_lv);
   ConstantDesc CompileConstant(ZonePtr<Token> token);
   std::span<const ConstantDesc> FreezeConstants(Zone* zone,
                                                 const BytecodeBuilder& builder);

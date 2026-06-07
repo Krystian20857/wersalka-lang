@@ -231,19 +231,14 @@ void CodeGenerator::CompileStmt(ZonePtr<ASTStmt> stmt) {
     }
     case ASTNode::Kind::kVarStmt: {
       const auto var_stmt = Cast<ASTVarStmt>(stmt);
-      CHECK(var_stmt->binding != nullptr)
-          << "var_stmt has not been processed by ScopeAnalyzer";
       if (var_stmt->init_expr) {
         CompileExpr(*var_stmt->init_expr);
       } else {
         builder_.EmitPushConst(ConstantDesc::CreateNull());
       }
-      if (var_stmt->binding->captured) {
-        builder_.EmitVarContext(Opcode::kStoreContextSlot, 0,
-                                var_stmt->binding->context_slot);
-      } else {
-        builder_.EmitVarLocal(Opcode::kStoreLocal, var_stmt->binding->slot);
-      }
+      const auto init_slot = AllocateSyntheticSlot();
+      builder_.EmitVarLocal(Opcode::kStoreLocal, init_slot);
+      CompilePattern(var_stmt->pattern, init_slot);
       break;
     }
     case ASTNode::Kind::kExprStmt: {
@@ -368,12 +363,12 @@ void CodeGenerator::CompileExpr(ZonePtr<ASTExpr> expr) {
     case ASTNode::Kind::kNewArrayExpr: {
       const auto new_expr = Cast<ASTNewArrayExpr>(expr);
       builder_.EmitPushConst(
-          ConstantDesc::CreateUInt(new_expr->elements_.size()));
+          ConstantDesc::CreateUInt(new_expr->elements.size()));
       builder_.Emit(Opcode::kNewArray);
-      for (auto n = 0; n < new_expr->elements_.size(); n++) {
+      for (auto n = 0; n < new_expr->elements.size(); n++) {
         builder_.Emit(Opcode::kDup);
         builder_.EmitPushConst(ConstantDesc::CreateUInt(n));
-        CompileExpr(new_expr->elements_[n]);
+        CompileExpr(new_expr->elements[n]);
         builder_.Emit(Opcode::kStoreArray);
       }
       break;
@@ -393,6 +388,14 @@ void CodeGenerator::CompileExpr(ZonePtr<ASTExpr> expr) {
     case ASTNode::Kind::kClosureExpr: {
       const auto closure_expr = Cast<ASTClosureExpr>(expr);
       CompileClosureExpr(closure_expr);
+      break;
+    }
+    case ASTNode::Kind::kTupleExpr: {
+      const auto tuple_expr = Cast<ASTTupleExpr>(expr);
+      for (auto element : tuple_expr->elements) {
+        CompileExpr(element);
+      }
+      builder_.Emit(Opcode::kNewTuple, tuple_expr->elements.size(), 0);
       break;
     }
     default:
@@ -416,7 +419,7 @@ void CodeGenerator::CompileBinaryExpr(ZonePtr<ASTBinaryExpr> expr) {
     CompileExpr(expr->left);
     CompileExpr(expr->right);
     builder_.Emit(Opcode::kCmpEq);
-    builder_.Emit(Opcode::kNeg);
+    builder_.Emit(Opcode::kNot);
     return;
   }
 
@@ -491,7 +494,7 @@ void CodeGenerator::CompileUnaryExpr(ZonePtr<ASTUnaryExpr> expr) {
       break;
     }
     case ASTUnaryExpr::Operator::kLogicNeg: {
-      builder_.Emit(Opcode::kNeg);
+      builder_.Emit(Opcode::kNot);
       break;
     }
     case ASTUnaryExpr::Operator::kBitwiseNeg: {
@@ -795,6 +798,32 @@ void CodeGenerator::CompileTryStmt(ZonePtr<ASTTryStmt> stmt) {
 
   if (!stmt->finally_blocks.empty()) {
     finally_blocks_.pop_back();
+  }
+}
+void CodeGenerator::CompilePattern(ZonePtr<ASTPattern> pattern, int right_lv) {
+  if (Is<ASTBindingPattern>(pattern)) {
+    const auto binding_pattern = Cast<ASTBindingPattern>(pattern);
+    builder_.EmitVarLocal(Opcode::kLoadLocal, right_lv);
+    const auto binding = binding_pattern->binding;
+    if (binding->captured) {
+      builder_.EmitVarContext(Opcode::kStoreContextSlot, 0,
+                              binding->context_slot);
+    } else {
+      builder_.EmitVarLocal(Opcode::kStoreLocal, binding->slot);
+    }
+  } else if (Is<ASTTuplePattern>(pattern)) {
+    CHECK_GE(right_lv, 0);
+    const auto tuple_pattern = Cast<ASTTuplePattern>(pattern);
+    for (auto n = 0; n < tuple_pattern->patterns.size(); ++n) {
+      builder_.EmitVarLocal(Opcode::kLoadLocal, right_lv);
+      builder_.EmitPushConst(ConstantDesc::CreateUInt(n));
+      builder_.Emit(Opcode::kLoadArray);
+
+      const auto tmp = AllocateSyntheticSlot();
+      builder_.EmitVarLocal(Opcode::kStoreLocal, tmp);
+      CompilePattern(tuple_pattern->patterns[n], tmp);
+      // TODO: release synthetic slot here
+    }
   }
 }
 

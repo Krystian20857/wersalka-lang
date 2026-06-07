@@ -11,3 +11,9 @@ wersalka_binary(
     srcs = "closure.w",
     #    deps = ["//stdlib"],
 )
+
+wersalka_binary(
+    name = "tuples",
+    srcs = "tuples.w",
+    #    deps = ["//stdlib"],
+)

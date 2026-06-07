@@ -456,8 +456,21 @@ CompileUnit
   IfStmt
     ConstExpr [true]
     BlockStmt
-      VarStmt [x]
+      VarStmt
+        BindingPattern [x]
         ConstExpr [1]
+)"
+    },
+    ParserCase{
+    "var t = new (new (1, 2), 3);",
+      R"(
+CompileUnit
+  GlobalDecl [t]
+    TupleExpr
+      TupleExpr
+        ConstExpr [1]
+        ConstExpr [2]
+      ConstExpr [3]
 )"
     }
   )
@@ -489,7 +502,8 @@ CompileUnit
 CompileUnit
   FunctionDecl [foo]
     BlockStmt
-      VarStmt [x]
+      VarStmt
+        BindingPattern [x]
         ConstExpr [1]
 )"
     },

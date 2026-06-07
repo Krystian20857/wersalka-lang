@@ -1,2 +1,7 @@
 build --cxxopt=-std=c++23
 build --host_cxxopt=-std=c++23
+
+build:debug -c dbg
+build:debug --strip=never
+build:debug --copt=-g
+build:debug --copt=-fno-omit-frame-pointer

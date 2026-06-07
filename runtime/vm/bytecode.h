@@ -33,7 +33,7 @@ enum class Opcode : uint8_t {
   kAdd, kSub, kMul, kDiv, kMod,
   kAnd, kOr, kXor, kShl, kShr,
   kCmpGt, kCmpLt, kCmpGe, kCmpLe, kCmpEq,
-  kNeg,
+  kNeg, kNot,
 
   kInvoke, kReturn, kClosure,
 
@@ -44,6 +44,8 @@ enum class Opcode : uint8_t {
 
   kMakeContext, kPushContext, kPopContext,
   kStoreContextSlot, kLoadContextSlot,
+
+  kNewTuple,
 
   kReserved
 };

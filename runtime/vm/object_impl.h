@@ -350,6 +350,35 @@ class ClosureContextObject : public Object {
   int value_count_;
 };
 
+class TupleObject : public Object {
+ public:
+  static constexpr auto kKind = ObjectKind::kTuple;
+  static constexpr auto kElementCountOffset = kHeaderSize;
+  static constexpr auto kValuesOffset = kElementCountOffset + sizeof(int);
+
+  std::span<Value> GetElements() {
+    return std::span(GetElementsPtr(), element_count_);
+  }
+
+  int element_count() const { return element_count_; }
+
+  static GCPtr<TupleObject> New(GC* gc, int element_count);
+
+ private:
+  explicit TupleObject(const int element_count)
+      : Object(ObjectKind::kTuple), element_count_(element_count) {}
+
+  friend class GC;
+  friend class GCVisitor;
+
+  Value* GetElementsPtr() {
+    return reinterpret_cast<Value*>(reinterpret_cast<char*>(this) +
+                                    kValuesOffset);
+  }
+
+  int element_count_;
+};
+
 }  // namespace runtime
 }  // namespace lang
 }  // namespace wersalka

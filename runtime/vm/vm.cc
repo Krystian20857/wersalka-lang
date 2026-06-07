@@ -345,6 +345,12 @@ Value VMInterpreter::Run(VMThread* thread) {
         frame->pc++;
         break;
       }
+      case Opcode::kNot: {
+        const auto value = thread->PopStack();
+        thread->PushStack(Value::CreateBool(!VMIntrinsics::IsTruthful(value)));
+        frame->pc++;
+        break;
+      }
       case Opcode::kInvoke: {
         runtime_->gc()->Collect(thread);
 
@@ -469,29 +475,31 @@ Value VMInterpreter::Run(VMThread* thread) {
       }
       case Opcode::kLoadArray: {
         const auto index_value = thread->PopStack();
-        const auto array = thread->PopStack();
-        const auto is_array =
-            array.IsObject() && array.GetObject()->kind() == ObjectKind::kArray;
-        if (!is_array) {
-          ThrowRuntimeError(thread,
-                            "Invalid target type, `array` type required");
-          break;
-        }
+        const auto object = thread->PopStack();
         if (!index_value.IsInt()) {
           ThrowRuntimeError(thread,
                             "Invalid array index type, `int` type required");
           break;
         }
+        std::span<Value> values;
+        if (object.IsObject(ObjectKind::kArray)) {
+          values = object.GetObjectUnchecked<ArrayObject>()->GetElements();
+        } else if (object.IsObject(ObjectKind::kTuple)) {
+          values = object.GetObjectUnchecked<TupleObject>()->GetElements();
+        } else {
+          ThrowRuntimeError(
+              thread, "Invalid target type, `array` or `tuple` type required");
+          break;
+        }
         const auto index = index_value.GetIntValue();
-        const auto array_object = array.GetObjectUnchecked<ArrayObject>();
-        if (index >= array_object->length()) {
+        if (index >= values.size()) {
           ThrowRuntimeError(
               thread, absl::StrFormat("Access out of bounds, `%d` must be "
                                       "greater than `0` and less than `%d`",
-                                      index, array_object->length()));
+                                      index, values.size()));
           break;
         }
-        thread->PushStack(array_object->GetElements()[index]);
+        thread->PushStack(values[index]);
         frame->pc++;
         break;
       }
@@ -592,6 +600,17 @@ Value VMInterpreter::Run(VMThread* thread) {
         }
         // TODO: slot bound checks
         current_context->GetValues()[slot] = thread->PopStack();
+        frame->pc++;
+        break;
+      }
+      case Opcode::kNewTuple: {
+        const auto element_count = instr.c1;
+        const auto tuple_object =
+            TupleObject::New(runtime_->gc(), element_count);
+        for (int n = element_count - 1; n >= 0; --n) {
+          tuple_object->GetElements()[n] = thread->PopStack();
+        }
+        thread->PushStack(tuple_object);
         frame->pc++;
         break;
       }

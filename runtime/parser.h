@@ -101,6 +101,10 @@ class Parser final {
   ZonePtr<ASTStmt> ParseTryStmt();
   ZonePtr<ASTStmt> ParseThrowStmt();
 
+  ZonePtr<ASTPattern> ParsePattern();
+  ZonePtr<ASTPattern> ParseBindingPattern();
+  ZonePtr<ASTPattern> ParseTuplePattern();
+
   ZonePtr<Token> Peek(int offset = 0);
   ZonePtr<Token> Next();
   bool At(const TokenSet& tokens);

@@ -19,6 +19,9 @@ constexpr auto kExtraStackSize = 4;
     .mnemonic = _mnemonic, .stack_in = _stack_in, .stack_out = _stack_out \
   }
 
+// FIXME: some opcodes have stack effect dependent on operand
+//  this behavior is not reflected in this table
+
 // clang-format off
 constexpr auto kOpcodes =
     std::array<OpcodeInfo, static_cast<size_t>(Opcode::kReserved)>{
@@ -55,6 +58,7 @@ constexpr auto kOpcodes =
         DEFINE_OPCODE("CMP_LE",               2, 1),
         DEFINE_OPCODE("CMP_EQ",               2, 1),
         DEFINE_OPCODE("NEG",                  1, 1),
+        DEFINE_OPCODE("NOT",                  1, 1),
 
         DEFINE_OPCODE("INVOKE",               1, 1),
         DEFINE_OPCODE("RETURN",               1, 0),
@@ -78,6 +82,8 @@ constexpr auto kOpcodes =
         DEFINE_OPCODE("POP_CONTEXT",          0, 0),
         DEFINE_OPCODE("STORE_CONTEXT_SLOT",   1, 0),
         DEFINE_OPCODE("LOAD_CONTEXT_SLOT",    0, 1),
+
+        DEFINE_OPCODE("NEW_TUPLE",            0, 0),
     };
 // clang-format on
 
@@ -264,7 +270,7 @@ int ComputeMaxStackDepth(std::span<const Instr> instructions,
     const auto instr = instructions[bci];
     const auto opcode_info = GetOpcodeInfo(instr.op);
     const auto stack_effect =
-        instr.op == Opcode::kInvoke
+        instr.op == Opcode::kInvoke || instr.op == Opcode::kNewTuple
             ? -instr.c1
             : (opcode_info->stack_out - opcode_info->stack_in);
     const auto new_stack = depth[bci] + stack_effect;

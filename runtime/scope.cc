@@ -236,8 +236,7 @@ void ScopeAnalyzer::AnalyzeStmt(ZonePtr<ASTStmt> stmt, Scope* current_scope) {
       if (var_stmt->init_expr) {
         AnalyzeExpr(*var_stmt->init_expr, current_scope);
       }
-      var_stmt->binding = current_scope->DeclareVariable(
-          var_stmt->name, BindingKind::kLocal, var_stmt->span());
+      AnalyzePattern(var_stmt->pattern, current_scope);
       break;
     }
     case ASTNode::Kind::kExprStmt: {
@@ -370,7 +369,7 @@ void ScopeAnalyzer::AnalyzeExpr(ZonePtr<ASTExpr> expr, Scope* current_scope) {
     }
     case ASTNode::Kind::kNewArrayExpr: {
       const auto new_array_expr = Cast<ASTNewArrayExpr>(expr);
-      for (const auto element : new_array_expr->elements_) {
+      for (const auto element : new_array_expr->elements) {
         AnalyzeExpr(element, current_scope);
       }
       return;
@@ -387,8 +386,29 @@ void ScopeAnalyzer::AnalyzeExpr(ZonePtr<ASTExpr> expr, Scope* current_scope) {
       AnalyzeClosure(closure_expr, current_scope);
       return;
     }
+    case ASTNode::Kind::kTupleExpr: {
+      const auto tuple_expr = Cast<ASTTupleExpr>(expr);
+      for (const auto element : tuple_expr->elements) {
+        AnalyzeExpr(element, current_scope);
+      }
+      return;
+    }
     default:
       ABSL_UNREACHABLE();
+  }
+}
+void ScopeAnalyzer::AnalyzePattern(ZonePtr<ASTPattern> pattern,
+                                   Scope* current_scope) {
+  if (Is<ASTBindingPattern>(pattern)) {
+    const auto binding_pattern = static_cast<ASTBindingPattern*>(pattern);
+
+    binding_pattern->binding = current_scope->DeclareVariable(
+        binding_pattern->name, BindingKind::kLocal, binding_pattern->span());
+  } else if (Is<ASTTuplePattern>(pattern)) {
+    const auto tuple_pattern = static_cast<ASTTuplePattern*>(pattern);
+    for (const auto ast_pattern : tuple_pattern->patterns) {
+      AnalyzePattern(ast_pattern, current_scope);
+    }
   }
 }
 

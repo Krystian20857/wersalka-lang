@@ -82,6 +82,13 @@ void GCVisitor::WalkObject(Value* value) {
         WalkObject(&slot);
       }
     }
+    case ObjectKind::kTuple: {
+      const auto tuple_object = static_cast<TupleObject*>(handle.GetPtr());
+      for (auto element : tuple_object->GetElements()) {
+        WalkObject(&element);
+      }
+      break;
+    }
   }
 }
 void GCVisitor::WalkRoots(VMThread* thread) {

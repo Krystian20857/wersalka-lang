@@ -152,7 +152,8 @@ static void DumpNode(const ASTNode* node, std::string& out, int depth) {
     }
     case ASTNode::Kind::kVarStmt: {
       const auto* n = static_cast<const ASTVarStmt*>(node);
-      absl::StrAppendFormat(&out, "%sVarStmt [%s]\n", indent, n->name);
+      absl::StrAppendFormat(&out, "%sVarStmt\n", indent);
+      DumpNode(n->pattern, out, depth + 1);
       if (n->init_expr.has_value()) {
         DumpNode(*n->init_expr, out, depth + 1);
       }
@@ -306,8 +307,8 @@ static void DumpNode(const ASTNode* node, std::string& out, int depth) {
     case ASTNode::Kind::kNewArrayExpr: {
       const auto* n = static_cast<const ASTNewArrayExpr*>(node);
       absl::StrAppendFormat(&out, "%sNewArrayExpr\n", indent);
-      for (int i = 0; i < n->elements_.size(); i++) {
-        DumpNode(n->elements_[i], out, depth + 1);
+      for (int i = 0; i < n->elements.size(); i++) {
+        DumpNode(n->elements[i], out, depth + 1);
       }
       break;
     }
@@ -331,6 +332,29 @@ static void DumpNode(const ASTNode* node, std::string& out, int depth) {
       DumpNode(n->block, out, depth + 1);
       break;
     }
+    case ASTNode::Kind::kTupleExpr: {
+      const auto* n = static_cast<const ASTTupleExpr*>(node);
+      absl::StrAppendFormat(&out, "%sTupleExpr\n", indent);
+      for (int i = 0; i < n->elements.size(); i++) {
+        DumpNode(n->elements[i], out, depth + 1);
+      }
+      break;
+    }
+    case ASTNode::Kind::kBindingPattern: {
+      const auto* n = static_cast<const ASTBindingPattern*>(node);
+      absl::StrAppendFormat(&out, "%sBindingPattern [%s]\n", indent, n->name);
+      break;
+    }
+    case ASTNode::Kind::kTuplePattern: {
+      const auto* n = static_cast<const ASTTuplePattern*>(node);
+      absl::StrAppendFormat(&out, "%sTuplePattern\n", indent);
+      for (int i = 0; i < n->patterns.size(); i++) {
+        DumpNode(n->patterns[i], out, depth + 1);
+      }
+      break;
+    }
+    case ASTNode::Kind::kUnknown:
+      break;
   }
 }
 

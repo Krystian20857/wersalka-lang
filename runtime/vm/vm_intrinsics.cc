@@ -227,8 +227,21 @@ std::string VMIntrinsics::ToString(Runtime* runtime, Value value, int depth) {
         result += "}";
         return result;
       }
+      case ObjectKind::kTuple: {
+        const auto array = static_cast<TupleObject*>(obj);
+        std::string result = "(";
+        for (int i = 0; i < array->element_count(); i++) {
+          if (i > 0) {
+            result += ", ";
+          }
+          result += ToString(runtime, array->GetElements()[i], depth + 1);
+        }
+        result += ")";
+        return result;
+      }
       default:
-        return absl::StrFormat("<object>@%d", IdentityHash(runtime, obj));
+        return absl::StrFormat("<%s>@%d", GetValueTypeName(obj),
+                               IdentityHash(runtime, obj));
     }
   }
   return "unknown";
@@ -236,7 +249,7 @@ std::string VMIntrinsics::ToString(Runtime* runtime, Value value, int depth) {
 
 int VMIntrinsics::IdentityHash(Runtime* runtime, const void* object) {
   const auto ptr = reinterpret_cast<uintptr_t>(object);
-  return (ptr >> 32) + (ptr & 0xFFFF) * 13;
+  return (ptr >> 32) + (ptr & 0xFFFFFFFF) * 13;
 }
 Value VMIntrinsics::Equals(VMThread* thread, Value left, Value right) {
   if (left.IsObject(ObjectKind::kString) &&

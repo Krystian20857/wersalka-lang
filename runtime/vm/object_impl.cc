@@ -177,6 +177,14 @@ GCPtr<ClosureContextObject> ClosureContextObject::New(
   }
   return context_object;
 }
+GCPtr<TupleObject> TupleObject::New(GC* gc, int element_count) {
+  const auto tuple_object = gc->NewSized<TupleObject>(
+      sizeof(TupleObject) + element_count * sizeof(Value), element_count);
+  for (auto n = 0; n < element_count; n++) {
+    tuple_object->GetElements()[n] = Value::CreateNull();
+  }
+  return tuple_object;
+}
 GCPtr<ShapedObject> ShapedObject::New(GC* gc, Tagged<Shape> shape) {
   const int slot_count = std::max(shape->slot_index() + 1, 0);
   const auto values = ValueArray::New(gc, slot_count);

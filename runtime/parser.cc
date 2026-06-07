@@ -22,7 +22,7 @@ constexpr auto kConstExprBeginTokens =
 constexpr auto kExprBeginTokens =
     kConstExprBeginTokens | kUnaryExprBeginTokens |
     TokenSet{TokenKind::kIdent, TokenKind::kOpenParen,
-             TokenKind::kTemplateBegin, TokenKind::kFunc};
+             TokenKind::kTemplateBegin, TokenKind::kFunc, TokenKind::kNew};
 constexpr auto kStmtBeginTokens =
     TokenSet{TokenKind::kVar,   TokenKind::kOpenBrace, TokenKind::kIf,
              TokenKind::kWhile, TokenKind::kReturn,    TokenKind::kTry,
@@ -33,6 +33,8 @@ constexpr auto kTopLevelBeginTokens =
     kStmtBeginTokens;
 constexpr auto kModuleMemberBeginTokens =
     TokenSet{TokenKind::kFunc, TokenKind::kVar, TokenKind::kModule};
+constexpr auto kPatternBeginTokens =
+    TokenSet{TokenKind::kIdent, TokenKind::kOpenParen};
 constexpr bool IsRightAssoc(const TokenKind kind) {
   switch (kind) {
     case TokenKind::kEq:
@@ -429,7 +431,23 @@ ZonePtr<ASTExpr> Parser::ParseNewExpr() {
 
   if (TryConsume(TokenKind::kOpenBrace)) {
     Expect(TokenKind::kCloseBrace);
+    // TODO: object construction
     return zone_->New<ASTNewObjectExpr>(SpanEnd(mark));
+  }
+
+  if (TryConsume(TokenKind::kOpenParen)) {
+    ZonePtrList<ASTExpr> elements(zone_);
+    while (At(kExprBeginTokens)) {
+      const auto expr = ParseExpr(Precedence::kNone);
+      elements.Add(zone_, expr);
+      if (At(TokenKind::kComma)) {
+        Next();
+      } else {
+        break;
+      }
+    }
+    Expect(TokenKind::kCloseParen);
+    return zone_->New<ASTTupleExpr>(SpanEnd(mark), elements);
   }
 
   ABSL_UNREACHABLE();
@@ -505,17 +523,13 @@ ZonePtr<ASTStmt> Parser::ParseBlockStmt() {
 ZonePtr<ASTStmt> Parser::ParseVarStmt() {
   const auto mark = SpanBegin();
   Expect(TokenKind::kVar);
-  const auto ident = Expect(TokenKind::kIdent);
-  std::optional<ZonePtr<ASTExpr>> init_expr;
-  if (At(TokenKind::kEq)) {
-    Next();
+  const auto pattern = ParsePattern();
+  std::optional<ZonePtr<ASTExpr>> init_expr = std::nullopt;
+  if (TryConsume(TokenKind::kEq)) {
     init_expr = ParseExpr(Precedence::kNone);
-  } else {
-    init_expr = std::nullopt;
   }
   Expect(TokenKind::kSemi);
-  return zone_->New<ASTVarStmt>(SpanEnd(mark),
-                                zone_->InternString(ident->str_v), init_expr);
+  return zone_->New<ASTVarStmt>(SpanEnd(mark), pattern, init_expr);
 }
 ZonePtr<ASTStmt> Parser::ParseIfStmt() {
   const auto mark = SpanBegin();
@@ -591,6 +605,38 @@ ZonePtr<ASTStmt> Parser::ParseThrowStmt() {
   const auto expr = ParseExpr(Precedence::kNone);
   Expect(TokenKind::kSemi);
   return zone_->New<ASTThrowStmt>(SpanEnd(mark), expr);
+}
+ZonePtr<ASTPattern> Parser::ParsePattern() {
+  if (At(TokenKind::kOpenParen)) {
+    return ParseTuplePattern();
+  }
+
+  if (At(TokenKind::kIdent)) {
+    return ParseBindingPattern();
+  }
+
+  ABSL_UNREACHABLE();
+}
+ZonePtr<ASTPattern> Parser::ParseBindingPattern() {
+  const auto mark = SpanBegin();
+  const auto ident = Expect(TokenKind::kIdent);
+  return zone_->New<ASTBindingPattern>(SpanEnd(mark),
+                                       zone_->InternString(ident->str_v));
+}
+ZonePtr<ASTPattern> Parser::ParseTuplePattern() {
+  const auto mark = SpanBegin();
+  Expect(TokenKind::kOpenParen);
+  ZonePtrList<ASTPattern> patterns(zone_);
+  while (At(kPatternBeginTokens)) {
+    patterns.Add(zone_, ParsePattern());
+    if (At(TokenKind::kComma)) {
+      Next();
+    } else {
+      break;
+    }
+  }
+  Expect(TokenKind::kCloseParen);
+  return zone_->New<ASTTuplePattern>(SpanEnd(mark), patterns);
 }
 ZonePtr<Token> Parser::Peek(int offset) {
   while (pos_ + offset >= tokens_.size()) {
