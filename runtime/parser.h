@@ -88,6 +88,9 @@ class Parser final {
   ZonePtr<ASTExpr> ParseArrayExpr(ZonePtr<ASTExpr> left);
   ZonePtr<ASTExpr> ParseTemplateExpr();
   ZonePtr<ASTExpr> ParseNewExpr();
+  ZonePtr<ASTExpr> ParseNewObjectExpr();
+  ZonePtr<ASTExpr> ParseNewArrayExpr();
+  ZonePtr<ASTExpr> ParseNewTupleExpr();
   ZonePtr<ASTExpr> ParseMemberAccessExpr(ZonePtr<ASTExpr> left);
   ZonePtr<ASTExpr> ParseClosureExpr();
 
@@ -100,6 +103,8 @@ class Parser final {
   ZonePtr<ASTStmt> ParseReturnStmt();
   ZonePtr<ASTStmt> ParseTryStmt();
   ZonePtr<ASTStmt> ParseThrowStmt();
+  ZonePtr<ASTStmt> ParseBreakStmt();
+  ZonePtr<ASTStmt> ParseContinueStmt();
 
   ZonePtr<ASTPattern> ParsePattern();
   ZonePtr<ASTPattern> ParseBindingPattern();

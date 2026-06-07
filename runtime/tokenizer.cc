@@ -34,11 +34,12 @@ const absl::flat_hash_map<char, char> kEscapes = {{'n', '\n'},  {'t', '\t'},
                                                   {'\\', '\\'}, {'\'', '\''},
                                                   {'"', '"'},   {'{', '{'}};
 const absl::flat_hash_map<absl::string_view, TokenKind> kKeywords = {
-    {"var", kVar},         {"if", kIf},         {"while", kWhile},
-    {"else", kElse},       {"in", kIn},         {"for", kFor},
-    {"func", kFunc},       {"return", kReturn}, {"new", kNew},
-    {"module", kModule},   {"try", kTry},       {"catch", kCatch},
-    {"finally", kFinally}, {"throw", kThrow}};
+    {"var", kVar},          {"if", kIf},         {"while", kWhile},
+    {"else", kElse},        {"in", kIn},         {"for", kFor},
+    {"func", kFunc},        {"return", kReturn}, {"new", kNew},
+    {"module", kModule},    {"try", kTry},       {"catch", kCatch},
+    {"finally", kFinally},  {"throw", kThrow},   {"break", kBreak},
+    {"continue", kContinue}};
 
 constexpr auto kTripleQuote = R"(""")";
 
@@ -121,6 +122,8 @@ const absl::flat_hash_map<TokenKind, absl::string_view> kTokenMnemonics = {
   {kCatch, "catch"},
   {kFinally, "finally"},
   {kThrow, "throw"},
+  {kBreak, "break"},
+  {kContinue, "continue"},
 
   {kReserved, "<RESERVED>"}
 };

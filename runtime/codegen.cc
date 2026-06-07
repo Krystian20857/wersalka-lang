@@ -272,13 +272,19 @@ void CodeGenerator::CompileStmt(ZonePtr<ASTStmt> stmt) {
     }
     case ASTNode::Kind::kWhileStmt: {
       const auto while_stmt = Cast<ASTWhileStmt>(stmt);
-      const auto label = builder_.NewLabel();
+      const auto loop_label = builder_.NewLabel();
       const auto exit_label = builder_.NewLabel();
-      builder_.BindLabel(label);
+      builder_.BindLabel(loop_label);
       CompileExpr(while_stmt->condition);
       builder_.EmitJump(Opcode::kJmpIfFalse, exit_label);
+      loop_stack_.push_back({
+          .continue_label = loop_label,
+          .break_label = exit_label,
+          .finally_depth = static_cast<int>(finally_blocks_.size()),
+      });
       CompileStmt(while_stmt->block);
-      builder_.EmitJump(Opcode::kJmp, label);
+      loop_stack_.pop_back();
+      builder_.EmitJump(Opcode::kJmp, loop_label);
       builder_.BindLabel(exit_label);
       break;
     }
@@ -305,6 +311,38 @@ void CodeGenerator::CompileStmt(ZonePtr<ASTStmt> stmt) {
       const auto throw_stmt = Cast<ASTThrowStmt>(stmt);
       CompileExpr(throw_stmt->expr);
       builder_.Emit(Opcode::kThrow);
+      break;
+    }
+    case ASTNode::Kind::kBreakStmt: {
+      if (loop_stack_.empty()) {
+        reporter_->Report(
+            Diagnostic::Error(source_file_, "`break` outside of a loop")
+                .WithLabel(stmt->span(),
+                           "`break` is only valid inside a loop"));
+        break;
+      }
+      const auto& loop = loop_stack_.back();
+      for (auto index = static_cast<int>(finally_blocks_.size()) - 1;
+           index >= loop.finally_depth; --index) {
+        finally_blocks_[index]();
+      }
+      builder_.EmitJump(Opcode::kJmp, loop.break_label);
+      break;
+    }
+    case ASTNode::Kind::kContinueStmt: {
+      if (loop_stack_.empty()) {
+        reporter_->Report(
+            Diagnostic::Error(source_file_, "`continue` outside of a loop")
+                .WithLabel(stmt->span(),
+                           "`continue` is only valid inside a loop"));
+        break;
+      }
+      const auto& loop = loop_stack_.back();
+      for (auto index = static_cast<int>(finally_blocks_.size()) - 1;
+           index >= loop.finally_depth; --index) {
+        finally_blocks_[index]();
+      }
+      builder_.EmitJump(Opcode::kJmp, loop.continue_label);
       break;
     }
     default:

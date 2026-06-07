@@ -272,6 +272,10 @@ void ScopeAnalyzer::AnalyzeStmt(ZonePtr<ASTStmt> stmt, Scope* current_scope) {
       AnalyzeExpr(throw_stmt->expr, current_scope);
       break;
     }
+    case ASTNode::Kind::kBreakStmt:
+    case ASTNode::Kind::kContinueStmt: {
+      break;
+    }
     case ASTNode::Kind::kTryStmt: {
       auto try_stmt = Cast<ASTTryStmt>(stmt);
       AnalyzeStmt(try_stmt->try_block, current_scope);

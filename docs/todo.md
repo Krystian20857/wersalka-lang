@@ -1,7 +1,5 @@
 * stdlib
 * (more) arrays, lists, overall collections
-* tuples
-* closures
 * break, continue
 * for stmt
 * proper `new { ... }` expression

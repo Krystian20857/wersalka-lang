@@ -12,6 +12,7 @@
 #include "runtime/ast.h"
 #include "runtime/diagnostic.h"
 #include "runtime/scope.h"
+#include "runtime/vm/bytecode.h"
 #include "runtime/vm/code_object.h"
 #include "runtime/vm/runtime.h"
 #include "runtime/zone.h"
@@ -90,6 +91,12 @@ class CodeGenerator {
   int EmitContextEntry(Scope* scope);
   void EmitContextExit(int save_slot);
 
+  struct LoopContext {
+    Label continue_label;
+    Label break_label;
+    int finally_depth;
+  };
+
   Runtime* runtime_;
   DiagnosticReporter* reporter_;
   Zone* zone_;
@@ -97,6 +104,7 @@ class CodeGenerator {
   BytecodeBuilder builder_;
   ZoneList<TryCatchBlock> try_catch_blocks_;
   std::vector<std::function<void()>> finally_blocks_;
+  std::vector<LoopContext> loop_stack_;
   Tagged<ShapedObject> current_module_;
   std::span<const ModuleAlias> ancestor_aliases_;
   Scope* current_scope_;

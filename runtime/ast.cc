@@ -353,6 +353,14 @@ static void DumpNode(const ASTNode* node, std::string& out, int depth) {
       }
       break;
     }
+    case ASTNode::Kind::kBreakStmt: {
+      absl::StrAppendFormat(&out, "%sBreakStmt\n", indent);
+      break;
+    }
+    case ASTNode::Kind::kContinueStmt: {
+      absl::StrAppendFormat(&out, "%sContinueStmt\n", indent);
+      break;
+    }
     case ASTNode::Kind::kUnknown:
       break;
   }

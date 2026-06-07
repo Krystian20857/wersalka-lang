@@ -45,6 +45,8 @@ class ASTNode : public ZoneObject {
     kIfStmt,
     kWhileStmt,
     kReturnStmt,
+    kBreakStmt,
+    kContinueStmt,
     kTryStmt,
     kThrowStmt,
 
@@ -238,6 +240,20 @@ struct ASTReturnStmt : ASTStmt {
       : ASTStmt(Kind::kReturnStmt, span), expr(expr) {}
 
   ZonePtr<ASTExpr> expr;
+};
+
+struct ASTBreakStmt : ASTStmt {
+  static constexpr auto kKind = Kind::kBreakStmt;
+
+  explicit ASTBreakStmt(const TextSpan& span)
+      : ASTStmt(Kind::kBreakStmt, span) {}
+};
+
+struct ASTContinueStmt : ASTStmt {
+  static constexpr auto kKind = Kind::kContinueStmt;
+
+  explicit ASTContinueStmt(const TextSpan& span)
+      : ASTStmt(Kind::kContinueStmt, span) {}
 };
 
 struct ASTTryStmt : ASTStmt {

@@ -26,7 +26,7 @@ constexpr auto kExprBeginTokens =
 constexpr auto kStmtBeginTokens =
     TokenSet{TokenKind::kVar,   TokenKind::kOpenBrace, TokenKind::kIf,
              TokenKind::kWhile, TokenKind::kReturn,    TokenKind::kTry,
-             TokenKind::kThrow} |
+             TokenKind::kThrow, TokenKind::kBreak,     TokenKind::kContinue} |
     kExprBeginTokens;
 constexpr auto kTopLevelBeginTokens =
     TokenSet{TokenKind::kFunc, TokenKind::kVar, TokenKind::kModule} |
@@ -411,50 +411,60 @@ ZonePtr<ASTExpr> Parser::ParseTemplateExpr() {
   return zone_->New<ASTTemplateExpr>(SpanEnd(mark), segments);
 }
 ZonePtr<ASTExpr> Parser::ParseNewExpr() {
-  const auto mark = SpanBegin();
   Expect(TokenKind::kNew);
-
   if (TryConsume(TokenKind::kOpenBracket)) {
-    ZonePtrList<ASTExpr> elements(zone_);
-    while (At(kExprBeginTokens)) {
-      const auto expr = ParseExpr(Precedence::kNone);
-      elements.Add(zone_, expr);
-      if (At(TokenKind::kComma)) {
-        Next();
-      } else {
-        break;
-      }
-    }
-    Expect(TokenKind::kCloseBracket);
-    return zone_->New<ASTNewArrayExpr>(SpanEnd(mark), elements);
+    return ParseNewArrayExpr();
   }
 
   if (TryConsume(TokenKind::kOpenBrace)) {
-    Expect(TokenKind::kCloseBrace);
-    // TODO: object construction
-    return zone_->New<ASTNewObjectExpr>(SpanEnd(mark));
+    return ParseNewObjectExpr();
   }
 
   if (TryConsume(TokenKind::kOpenParen)) {
-    ZonePtrList<ASTExpr> elements(zone_);
-    while (At(kExprBeginTokens)) {
-      const auto expr = ParseExpr(Precedence::kNone);
-      elements.Add(zone_, expr);
-      if (At(TokenKind::kComma)) {
-        Next();
-      } else {
-        break;
-      }
-    }
-    Expect(TokenKind::kCloseParen);
-    return zone_->New<ASTTupleExpr>(SpanEnd(mark), elements);
+    return ParseNewTupleExpr();
   }
 
   ABSL_UNREACHABLE();
 }
-ZonePtr<ASTExpr> Parser::ParseMemberAccessExpr(ZonePtr<ASTExpr> left) {
-  Expect(TokenKind::kDot);
+ZonePtr<ASTExpr> Parser::ParseNewObjectExpr() {
   const auto mark = SpanBegin();
+  Expect(TokenKind::kCloseBrace);
+  // TODO: object construction
+  return zone_->New<ASTNewObjectExpr>(SpanEnd(mark));
+}
+ZonePtr<ASTExpr> Parser::ParseNewArrayExpr() {
+  const auto mark = SpanBegin();
+  ZonePtrList<ASTExpr> elements(zone_);
+  while (At(kExprBeginTokens)) {
+    const auto expr = ParseExpr(Precedence::kNone);
+    elements.Add(zone_, expr);
+    if (At(TokenKind::kComma)) {
+      Next();
+    } else {
+      break;
+    }
+  }
+  Expect(TokenKind::kCloseBracket);
+  return zone_->New<ASTNewArrayExpr>(SpanEnd(mark), elements);
+}
+ZonePtr<ASTExpr> Parser::ParseNewTupleExpr() {
+  const auto mark = SpanBegin();
+  ZonePtrList<ASTExpr> elements(zone_);
+  while (At(kExprBeginTokens)) {
+    const auto expr = ParseExpr(Precedence::kNone);
+    elements.Add(zone_, expr);
+    if (At(TokenKind::kComma)) {
+      Next();
+    } else {
+      break;
+    }
+  }
+  Expect(TokenKind::kCloseParen);
+  return zone_->New<ASTTupleExpr>(SpanEnd(mark), elements);
+}
+ZonePtr<ASTExpr> Parser::ParseMemberAccessExpr(ZonePtr<ASTExpr> left) {
+  const auto mark = SpanBegin();
+  Expect(TokenKind::kDot);
   const auto field = Expect(TokenKind::kIdent);
   return zone_->New<ASTMemberAccessExpr>(
       TextSpan::Merge(left->span(), SpanEnd(mark)), left,
@@ -502,6 +512,12 @@ ZonePtr<ASTStmt> Parser::ParseStmt() {
   }
   if (At(TokenKind::kThrow)) {
     return ParseThrowStmt();
+  }
+  if (At(TokenKind::kBreak)) {
+    return ParseBreakStmt();
+  }
+  if (At(TokenKind::kContinue)) {
+    return ParseContinueStmt();
   }
 
   ABSL_UNREACHABLE();
@@ -605,6 +621,18 @@ ZonePtr<ASTStmt> Parser::ParseThrowStmt() {
   const auto expr = ParseExpr(Precedence::kNone);
   Expect(TokenKind::kSemi);
   return zone_->New<ASTThrowStmt>(SpanEnd(mark), expr);
+}
+ZonePtr<ASTStmt> Parser::ParseBreakStmt() {
+  const auto mark = SpanBegin();
+  Expect(TokenKind::kBreak);
+  Expect(TokenKind::kSemi);
+  return zone_->New<ASTBreakStmt>(SpanEnd(mark));
+}
+ZonePtr<ASTStmt> Parser::ParseContinueStmt() {
+  const auto mark = SpanBegin();
+  Expect(TokenKind::kContinue);
+  Expect(TokenKind::kSemi);
+  return zone_->New<ASTContinueStmt>(SpanEnd(mark));
 }
 ZonePtr<ASTPattern> Parser::ParsePattern() {
   if (At(TokenKind::kOpenParen)) {
